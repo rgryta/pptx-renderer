@@ -158,6 +158,12 @@ export function buildCustomLegendOverlay(
   const radarData = Array.isArray(radarSeries?.data)
     ? (radarSeries.data as Record<string, unknown>[])
     : undefined;
+  const pieSeries = seriesList.find(
+    (candidate) => (candidate as Record<string, unknown> | undefined)?.type === 'pie',
+  ) as Record<string, unknown> | undefined;
+  const pieData = Array.isArray(pieSeries?.data)
+    ? (pieSeries.data as Record<string, unknown>[])
+    : undefined;
   const entries = rawData
     .map((item, index) => {
       const name = typeof item === 'string' ? item : item.name;
@@ -176,7 +182,13 @@ export function buildCustomLegendOverlay(
         | undefined;
       const radarVisual =
         radarData && radarIndex >= 0 ? radarData[radarIndex] : (radarData?.[index] ?? undefined);
-      const visual = radarData ? (radarVisual ?? itemVisual ?? series) : (itemVisual ?? series);
+      const pieVisual =
+        pieData?.[index]?.name === name
+          ? pieData[index]
+          : pieData?.find((candidate) => candidate.name === name);
+      const visual = radarData
+        ? (radarVisual ?? itemVisual ?? series)
+        : (itemVisual ?? pieVisual ?? series);
       const lineSource = radarVisual ?? series;
       const markerSource = radarVisual ?? series ?? itemVisual;
       const lineStyle = {

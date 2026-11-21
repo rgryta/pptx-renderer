@@ -1962,6 +1962,133 @@ describe('ChartRenderer', () => {
       expect(series?.center).toEqual(['38%', '55%']);
     });
 
+    it('shrinks a right-legend pie to stay inside a square chart box', () => {
+      const xml = `
+        <c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"
+                      xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+          <c:chart>
+            <c:autoTitleDeleted val="1"/>
+            <c:plotArea>
+              <c:pieChart>
+                <c:ser>
+                  <c:idx val="0"/><c:order val="0"/>
+                  <c:tx><c:strRef><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>Sales</c:v></c:pt></c:strCache></c:strRef></c:tx>
+                  <c:cat><c:strRef><c:strCache><c:ptCount val="4"/>
+                    <c:pt idx="0"><c:v>Q1</c:v></c:pt>
+                    <c:pt idx="1"><c:v>Q2</c:v></c:pt>
+                    <c:pt idx="2"><c:v>Q3</c:v></c:pt>
+                    <c:pt idx="3"><c:v>Q4</c:v></c:pt>
+                  </c:strCache></c:strRef></c:cat>
+                  <c:val><c:numRef><c:numCache><c:formatCode>General</c:formatCode><c:ptCount val="4"/>
+                    <c:pt idx="0"><c:v>8.2</c:v></c:pt>
+                    <c:pt idx="1"><c:v>3.2</c:v></c:pt>
+                    <c:pt idx="2"><c:v>1.4</c:v></c:pt>
+                    <c:pt idx="3"><c:v>1.2</c:v></c:pt>
+                  </c:numCache></c:numRef></c:val>
+                </c:ser>
+              </c:pieChart>
+            </c:plotArea>
+            <c:legend>
+              <c:legendPos val="r"/>
+              <c:overlay val="0"/>
+            </c:legend>
+          </c:chart>
+        </c:chartSpace>`;
+
+      const { option } = parseChartXml(parseXml(xml), createMockRenderContext(), undefined, {
+        w: 300,
+        h: 300,
+      });
+      const series = (option.series as any[])?.[0];
+
+      expect(series?.center).toEqual(['38%', '55%']);
+      expect(series?.radius).toBe('76%');
+    });
+
+    it('leaves room for an exploded slice when shrinking a pie', () => {
+      const xml = `
+        <c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"
+                      xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+          <c:chart>
+            <c:autoTitleDeleted val="1"/>
+            <c:plotArea>
+              <c:pieChart>
+                <c:ser>
+                  <c:idx val="0"/><c:order val="0"/><c:explosion val="20"/>
+                  <c:tx><c:strRef><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>Sales</c:v></c:pt></c:strCache></c:strRef></c:tx>
+                  <c:cat><c:strRef><c:strCache><c:ptCount val="4"/>
+                    <c:pt idx="0"><c:v>Q1</c:v></c:pt>
+                    <c:pt idx="1"><c:v>Q2</c:v></c:pt>
+                    <c:pt idx="2"><c:v>Q3</c:v></c:pt>
+                    <c:pt idx="3"><c:v>Q4</c:v></c:pt>
+                  </c:strCache></c:strRef></c:cat>
+                  <c:val><c:numRef><c:numCache><c:formatCode>General</c:formatCode><c:ptCount val="4"/>
+                    <c:pt idx="0"><c:v>8.2</c:v></c:pt>
+                    <c:pt idx="1"><c:v>3.2</c:v></c:pt>
+                    <c:pt idx="2"><c:v>1.4</c:v></c:pt>
+                    <c:pt idx="3"><c:v>1.2</c:v></c:pt>
+                  </c:numCache></c:numRef></c:val>
+                </c:ser>
+              </c:pieChart>
+            </c:plotArea>
+            <c:legend>
+              <c:legendPos val="r"/>
+              <c:overlay val="0"/>
+            </c:legend>
+          </c:chart>
+        </c:chartSpace>`;
+
+      const { option } = parseChartXml(parseXml(xml), createMockRenderContext(), undefined, {
+        w: 300,
+        h: 300,
+      });
+      const series = (option.series as any[])?.[0];
+
+      expect(series?.center).toEqual(['38%', '55%']);
+      expect(series?.radius).toBe('69%');
+    });
+
+    it('keeps the default right-legend pie radius when the chart is wide enough', () => {
+      const xml = `
+        <c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"
+                      xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+          <c:chart>
+            <c:autoTitleDeleted val="1"/>
+            <c:plotArea>
+              <c:pieChart>
+                <c:ser>
+                  <c:idx val="0"/><c:order val="0"/>
+                  <c:tx><c:strRef><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>Sales</c:v></c:pt></c:strCache></c:strRef></c:tx>
+                  <c:cat><c:strRef><c:strCache><c:ptCount val="4"/>
+                    <c:pt idx="0"><c:v>Q1</c:v></c:pt>
+                    <c:pt idx="1"><c:v>Q2</c:v></c:pt>
+                    <c:pt idx="2"><c:v>Q3</c:v></c:pt>
+                    <c:pt idx="3"><c:v>Q4</c:v></c:pt>
+                  </c:strCache></c:strRef></c:cat>
+                  <c:val><c:numRef><c:numCache><c:formatCode>General</c:formatCode><c:ptCount val="4"/>
+                    <c:pt idx="0"><c:v>8.2</c:v></c:pt>
+                    <c:pt idx="1"><c:v>3.2</c:v></c:pt>
+                    <c:pt idx="2"><c:v>1.4</c:v></c:pt>
+                    <c:pt idx="3"><c:v>1.2</c:v></c:pt>
+                  </c:numCache></c:numRef></c:val>
+                </c:ser>
+              </c:pieChart>
+            </c:plotArea>
+            <c:legend>
+              <c:legendPos val="r"/>
+              <c:overlay val="0"/>
+            </c:legend>
+          </c:chart>
+        </c:chartSpace>`;
+
+      const { option } = parseChartXml(parseXml(xml), createMockRenderContext(), undefined, {
+        w: 600,
+        h: 300,
+      });
+
+      expect((option.series as any[])?.[0]?.radius).toBe('82%');
+    });
+
     it('should parse doughnutChart with inner/outer radius', () => {
       const xml = `
         <c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"
