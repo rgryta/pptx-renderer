@@ -153,6 +153,7 @@ function computePieLayout(
   showLabel: boolean,
   holeSizePct = 50,
   hasExplosion = false,
+  chartSize?: ChartPixelSize,
 ): { center: [string, string]; radius: [string, string] | string } {
   const placement = getLegendPlacement(legendInfo);
   let center: [string, string] = ['50%', '55%'];
@@ -179,12 +180,28 @@ function computePieLayout(
     outerRadius -= 4;
   }
 
+  outerRadius = fitPieRadiusPct(outerRadius, center, chartSize);
+
   if (!isDoughnut) {
     return { center, radius: `${outerRadius}%` };
   }
 
   const innerRadius = Math.round(outerRadius * (Math.min(Math.max(holeSizePct, 10), 90) / 100));
   return { center, radius: [`${innerRadius}%`, `${outerRadius}%`] };
+}
+
+/** ECharts sizes a percentage pie radius against half the shorter side; keep the disc inside the chart box. */
+function fitPieRadiusPct(
+  radiusPct: number,
+  center: [string, string],
+  chartSize: ChartPixelSize | undefined,
+): number {
+  if (!chartSize || !(chartSize.w > 0) || !(chartSize.h > 0)) return radiusPct;
+  const cx = (parseFloat(center[0]) / 100) * chartSize.w;
+  const cy = (parseFloat(center[1]) / 100) * chartSize.h;
+  const roomPx = Math.min(cx, chartSize.w - cx, cy, chartSize.h - cy);
+  const halfShortSide = Math.min(chartSize.w, chartSize.h) / 2;
+  return Math.min(radiusPct, Math.floor((roomPx / halfShortSide) * 100));
 }
 
 function pieExplosionToOffset(explosion: number, isDoughnut = false): number {
@@ -1209,6 +1226,7 @@ function buildPieChartOption(
   seriesArr: SeriesData[],
   isDoughnut: boolean,
   ctx: RenderContext,
+  chartSize?: ChartPixelSize,
 ): EChartsTypes.EChartsOption {
   const titleOption = buildChartTitleOption(chartNode, seriesArr, ctx, 12);
   const legendInfo = extractLegendInfo(chartNode, ctx);
@@ -1261,7 +1279,14 @@ function buildPieChartOption(
   const hasExplosion = seriesLabelMeta.some((meta) =>
     meta.explosions?.some((explosion) => explosion > 0),
   );
-  const pieLayout = computePieLayout(legendInfo, isDoughnut, showLabel, holeSizePct, hasExplosion);
+  const pieLayout = computePieLayout(
+    legendInfo,
+    isDoughnut,
+    showLabel,
+    holeSizePct,
+    hasExplosion,
+    chartSize,
+  );
   const startAngle = mapFirstSliceAngle(chartTypeNode.child('firstSliceAng').numAttr('val'));
 
   const series: EChartsTypes.PieSeriesOption[] = seriesLabelMeta.map((meta, idx) => {
@@ -2181,9 +2206,9 @@ function buildOptionForChartType(
       return buildLineChartOption(chartTypeNode, chartNode, seriesArr, ctx, true, chartPalette);
     case 'pieChart':
     case 'pie3DChart':
-      return buildPieChartOption(chartTypeNode, chartNode, seriesArr, false, ctx);
+      return buildPieChartOption(chartTypeNode, chartNode, seriesArr, false, ctx, chartSize);
     case 'doughnutChart':
-      return buildPieChartOption(chartTypeNode, chartNode, seriesArr, true, ctx);
+      return buildPieChartOption(chartTypeNode, chartNode, seriesArr, true, ctx, chartSize);
     case 'radarChart':
       return buildRadarChartOption(
         chartTypeNode,

@@ -19,6 +19,31 @@ describe('chart legend overlay helpers', () => {
     expect(icon === null).toBe(true);
   });
 
+  it('colours pie legend swatches from each slice, not from the palette', () => {
+    const overlay = buildCustomLegendOverlay(
+      {
+        color: ['#111111', '#222222', '#333333'],
+        legend: { right: 10, top: 'middle', orient: 'vertical', data: ['A', 'B', 'C'] },
+        series: [
+          {
+            type: 'pie',
+            data: [
+              { name: 'A', value: 1, itemStyle: { color: '#ff0000' } },
+              { name: 'B', value: 2, itemStyle: { color: '#00ff00' } },
+              { name: 'C', value: 3 },
+            ],
+          },
+        ],
+      },
+      { w: 400, h: 300 },
+    );
+
+    const fills = [...(overlay?.querySelectorAll('svg [fill]') ?? [])].map((node) =>
+      node.getAttribute('fill'),
+    );
+    expect(fills).toEqual(['#ff0000', '#00ff00', '#333333']);
+  });
+
   it('builds anchored legend overlay from ECharts legend option', () => {
     const overlay = buildCustomLegendOverlay(
       {
