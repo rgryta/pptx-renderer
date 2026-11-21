@@ -25,6 +25,45 @@ describe('chart format helpers', () => {
     expect(extractStringValues(node)).toEqual(['Alpha', '', 'Gamma']);
   });
 
+  it('reads leaf labels from a multi-level category cache, as pptxgenjs writes them', () => {
+    const node = parseXml(`
+      <c:cat xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart">
+        <c:multiLvlStrRef>
+          <c:f>Sheet1!$A$2:$B$5</c:f>
+          <c:multiLvlStrCache>
+            <c:ptCount val="4"/>
+            <c:lvl>
+              <c:pt idx="0"><c:v>Q1</c:v></c:pt>
+              <c:pt idx="1"><c:v>Q2</c:v></c:pt>
+              <c:pt idx="3"><c:v>Q4</c:v></c:pt>
+            </c:lvl>
+            <c:lvl>
+              <c:pt idx="0"><c:v>2026</c:v></c:pt>
+            </c:lvl>
+          </c:multiLvlStrCache>
+        </c:multiLvlStrRef>
+      </c:cat>
+    `);
+
+    expect(extractStringValues(node)).toEqual(['Q1', 'Q2', '', 'Q4']);
+  });
+
+  it('reads an inline multi-level category cache without a reference', () => {
+    const node = parseXml(`
+      <c:cat xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart">
+        <c:multiLvlStrCache>
+          <c:ptCount val="2"/>
+          <c:lvl>
+            <c:pt idx="0"><c:v>Jan</c:v></c:pt>
+            <c:pt idx="1"><c:v>Feb</c:v></c:pt>
+          </c:lvl>
+        </c:multiLvlStrCache>
+      </c:cat>
+    `);
+
+    expect(extractStringValues(node)).toEqual(['Jan', 'Feb']);
+  });
+
   it('falls back to numeric cache values as category strings and formats date serials', () => {
     const node = parseXml(`
       <c:cat xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart">

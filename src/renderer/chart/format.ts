@@ -2,8 +2,8 @@ import { SafeXmlNode } from '../../parser/XmlParser';
 
 const MAX_CHART_CACHE_POINTS = 10_000;
 
-function getCachePointLimit(cache: SafeXmlNode): number {
-  const declared = cache.child('ptCount').numAttr('val');
+function getCachePointLimit(cache: SafeXmlNode, countSource: SafeXmlNode = cache): number {
+  const declared = countSource.child('ptCount').numAttr('val');
   let maxPresentIndex = -1;
 
   for (const pt of cache.children('pt')) {
@@ -50,6 +50,33 @@ function resolveDataCache(refNode: SafeXmlNode, kind: 'str' | 'num'): SafeXmlNod
   );
 }
 
+/** The first `lvl` of a multi-level category cache holds the leaf labels, one per data point. */
+function resolveMultiLevelLeaf(refNode: SafeXmlNode): { leaf: SafeXmlNode; cache: SafeXmlNode } {
+  const candidates = [
+    refNode.child('multiLvlStrRef').child('multiLvlStrCache'),
+    refNode.child('multiLvlStrCache'),
+  ];
+  const cache =
+    candidates.find((c) => c.child('lvl').children('pt').length > 0) ??
+    candidates.find((c) => c.exists()) ??
+    candidates[0];
+  return { leaf: cache.child('lvl'), cache };
+}
+
+function readStringPoints(points: SafeXmlNode, countSource: SafeXmlNode = points): string[] {
+  const pointLimit = getCachePointLimit(points, countSource);
+  const values: string[] = new Array(pointLimit).fill('');
+
+  for (const pt of points.children('pt')) {
+    const idx = pt.numAttr('idx');
+    if (isCachePointInRange(idx, pointLimit)) {
+      values[idx] = pt.child('v').text();
+    }
+  }
+
+  return values;
+}
+
 export function extractStringValues(refNode: SafeXmlNode): string[] {
   const cache = resolveDataCache(refNode, 'str');
 
@@ -58,21 +85,14 @@ export function extractStringValues(refNode: SafeXmlNode): string[] {
     if (numCache.exists() && (!cache.exists() || numCache.children('pt').length > 0)) {
       return extractNumericValuesAsStrings(numCache);
     }
+    const multiLevel = resolveMultiLevelLeaf(refNode);
+    if (multiLevel.leaf.children('pt').length > 0) {
+      return readStringPoints(multiLevel.leaf, multiLevel.cache);
+    }
     if (!cache.exists()) return [];
   }
 
-  const pointLimit = getCachePointLimit(cache);
-  const values: string[] = new Array(pointLimit).fill('');
-
-  for (const pt of cache.children('pt')) {
-    const idx = pt.numAttr('idx');
-    if (isCachePointInRange(idx, pointLimit)) {
-      const v = pt.child('v').text();
-      values[idx] = v;
-    }
-  }
-
-  return values;
+  return readStringPoints(cache);
 }
 
 export function extractFormatCode(refNode: SafeXmlNode): string | undefined {
