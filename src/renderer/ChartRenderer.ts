@@ -2620,7 +2620,9 @@ export function renderChart(node: ChartNodeData, ctx: RenderContext): HTMLElemen
       sizeObserver?.disconnect();
       ctx.signal?.removeEventListener('abort', cancel);
       if (!ctx.signal?.aborted && chartDiv.isConnected) {
-        initChart(chartDiv, option, chartSet, ctx.signal);
+        initChart(chartDiv, option, chartSet, ctx.signal, (error) =>
+          ctx.onNodeError?.(node.id, error),
+        );
       }
       resolve();
     };
@@ -2667,6 +2669,7 @@ function initChart(
   option: EChartsTypes.EChartsOption,
   chartInstances?: Set<EChartsType>,
   signal?: AbortSignal,
+  onError?: (error: unknown) => void,
 ): void {
   try {
     const chart = echarts.init(container);
@@ -2700,6 +2703,7 @@ function initChart(
     ro?.observe(container);
   } catch (e) {
     console.warn('Failed to initialize ECharts:', e);
+    onError?.(e);
     container.style.display = 'flex';
     container.style.alignItems = 'center';
     container.style.justifyContent = 'center';

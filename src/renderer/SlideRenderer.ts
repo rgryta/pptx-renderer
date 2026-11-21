@@ -248,6 +248,9 @@ export function renderSlide(
   if (options?.onNavigate) {
     ctx.onNavigate = options.onNavigate;
   }
+  if (options?.onNodeError) {
+    ctx.onNodeError = options.onNodeError;
+  }
 
   // Create slide container
   const container = document.createElement('div');

@@ -62,6 +62,8 @@ export interface RenderContext {
    * or with a URL string for external links.
    */
   onNavigate?: (target: { slideIndex?: number; url?: string }) => void;
+  /** Reports a node that failed after the synchronous render pass, such as a chart's deferred init. */
+  onNodeError?: (nodeId: string, error: unknown) => void;
 }
 
 export function createRenderContext(

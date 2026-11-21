@@ -423,6 +423,33 @@ describe('ChartRenderer chartInstances lifecycle', () => {
     }
   });
 
+  it('reports a failed chart initialization through onNodeError', () => {
+    const ctx = createMockRenderContext();
+    ctx.presentation.charts = new Map([['ppt/charts/chart1.xml', parseXml(buildSimpleChartXml())]]);
+    const onNodeError = vi.fn();
+    ctx.onNodeError = onNodeError;
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const failure = new Error('init failed');
+    vi.mocked(echarts.init).mockImplementationOnce(() => {
+      throw failure;
+    });
+
+    const node = makeChartNode();
+    const wrapper = renderChart(node, ctx);
+    document.body.appendChild(wrapper);
+    const chartDiv = wrapper.querySelector('div') as HTMLElement;
+    Object.defineProperty(chartDiv, 'offsetWidth', { value: 400, configurable: true });
+    Object.defineProperty(chartDiv, 'offsetHeight', { value: 300, configurable: true });
+
+    try {
+      for (const cb of rafCallbacks) cb();
+      expect(onNodeError).toHaveBeenCalledWith(node.id, failure);
+    } finally {
+      document.body.removeChild(wrapper);
+      warnSpy.mockRestore();
+    }
+  });
+
   it('renders custom side legend overlay and disables echarts legend for right-side scatter legends', () => {
     const ctx = createMockRenderContext();
     ctx.presentation.charts = new Map([
