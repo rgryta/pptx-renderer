@@ -44,6 +44,29 @@ describe('chart legend overlay helpers', () => {
     expect(fills).toEqual(['#ff0000', '#00ff00', '#333333']);
   });
 
+  it('keeps each pie slice colour when two slices share a name', () => {
+    const overlay = buildCustomLegendOverlay(
+      {
+        legend: { right: 10, top: 'middle', orient: 'vertical', data: ['Other', 'Other'] },
+        series: [
+          {
+            type: 'pie',
+            data: [
+              { name: 'Other', value: 1, itemStyle: { color: '#ff0000' } },
+              { name: 'Other', value: 2, itemStyle: { color: '#0000ff' } },
+            ],
+          },
+        ],
+      },
+      { w: 400, h: 300 },
+    );
+
+    const fills = [...(overlay?.querySelectorAll('svg [fill]') ?? [])].map((node) =>
+      node.getAttribute('fill'),
+    );
+    expect(fills).toEqual(['#ff0000', '#0000ff']);
+  });
+
   it('builds anchored legend overlay from ECharts legend option', () => {
     const overlay = buildCustomLegendOverlay(
       {

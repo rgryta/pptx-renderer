@@ -154,6 +154,7 @@ function computePieLayout(
   holeSizePct = 50,
   hasExplosion = false,
   chartSize?: ChartPixelSize,
+  explosionOffsetPx = 0,
 ): { center: [string, string]; radius: [string, string] | string } {
   const placement = getLegendPlacement(legendInfo);
   let center: [string, string] = ['50%', '55%'];
@@ -180,7 +181,7 @@ function computePieLayout(
     outerRadius -= 4;
   }
 
-  outerRadius = fitPieRadiusPct(outerRadius, center, chartSize);
+  outerRadius = fitPieRadiusPct(outerRadius, center, chartSize, explosionOffsetPx);
 
   if (!isDoughnut) {
     return { center, radius: `${outerRadius}%` };
@@ -195,11 +196,12 @@ function fitPieRadiusPct(
   radiusPct: number,
   center: [string, string],
   chartSize: ChartPixelSize | undefined,
+  explosionOffsetPx: number,
 ): number {
   if (!chartSize || !(chartSize.w > 0) || !(chartSize.h > 0)) return radiusPct;
   const cx = (parseFloat(center[0]) / 100) * chartSize.w;
   const cy = (parseFloat(center[1]) / 100) * chartSize.h;
-  const roomPx = Math.min(cx, chartSize.w - cx, cy, chartSize.h - cy);
+  const roomPx = Math.min(cx, chartSize.w - cx, cy, chartSize.h - cy) - explosionOffsetPx;
   const halfShortSide = Math.min(chartSize.w, chartSize.h) / 2;
   return Math.min(radiusPct, Math.floor((roomPx / halfShortSide) * 100));
 }
@@ -1279,6 +1281,12 @@ function buildPieChartOption(
   const hasExplosion = seriesLabelMeta.some((meta) =>
     meta.explosions?.some((explosion) => explosion > 0),
   );
+  const explosionOffsetPx = Math.max(
+    0,
+    ...seriesLabelMeta.flatMap((meta) =>
+      (meta.explosions ?? []).map((explosion) => pieExplosionToOffset(explosion, isDoughnut)),
+    ),
+  );
   const pieLayout = computePieLayout(
     legendInfo,
     isDoughnut,
@@ -1286,6 +1294,7 @@ function buildPieChartOption(
     holeSizePct,
     hasExplosion,
     chartSize,
+    explosionOffsetPx,
   );
   const startAngle = mapFirstSliceAngle(chartTypeNode.child('firstSliceAng').numAttr('val'));
 

@@ -182,7 +182,10 @@ export function buildCustomLegendOverlay(
         | undefined;
       const radarVisual =
         radarData && radarIndex >= 0 ? radarData[radarIndex] : (radarData?.[index] ?? undefined);
-      const pieVisual = pieData?.find((candidate) => candidate.name === name);
+      const pieVisual =
+        pieData?.[index]?.name === name
+          ? pieData[index]
+          : pieData?.find((candidate) => candidate.name === name);
       const visual = radarData
         ? (radarVisual ?? itemVisual ?? series)
         : (itemVisual ?? pieVisual ?? series);
