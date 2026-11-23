@@ -148,7 +148,7 @@ import {
   parseNormAutofitFontScale,
   parseTextPercentage,
 } from './TextBodyProperties';
-import { cssFontFamilyStack, resolveThemeFontStack } from './fontResolver';
+import { cssFontFamilyStack, fontNameWeight, resolveThemeFontStack } from './fontResolver';
 import { resolveSlideNavigationIndex, slideJumpTitle } from './navigation';
 import { scaleCssLengthForTransform } from './cssValues';
 import {
@@ -379,7 +379,7 @@ function renderWarpedTextBody(node: ShapeNodeData, ctx: RenderContext): SVGSVGEl
     ctx,
     [rPr?.attr('lang'), rPr?.attr('altLang')],
   );
-  const fontWeight = parseOoxmlBool(rPr?.attr('b')) ? 'bold' : undefined;
+  const fontWeight = fontNameWeight(fontStack[0] ?? '', parseOoxmlBool(rPr?.attr('b')));
   const solidFill = rPr?.child('solidFill');
   const fill = solidFill?.exists() ? resolveColorToCss(solidFill, ctx) : '#000000';
 

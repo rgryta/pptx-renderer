@@ -6839,6 +6839,30 @@ describe('ShapeRenderer', () => {
     expect(warpPath.getAttribute('d')).toMatch(pathMatcher);
   });
 
+  it('weights warped text from a weight word in the family name', () => {
+    const xml = `
+      <p:sp xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+            xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+        <p:nvSpPr><p:cNvPr id="24" name="Warped text"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
+        <p:spPr>
+          <a:xfrm><a:off x="0" y="0"/><a:ext cx="952500" cy="762000"/></a:xfrm>
+          <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+        </p:spPr>
+        <p:txBody>
+          <a:bodyPr><a:prstTxWarp prst="textArchUp"/></a:bodyPr>
+          <a:lstStyle/>
+          <a:p><a:r><a:rPr sz="2800"><a:latin typeface="Public Sans Bold"/></a:rPr><a:t>Arch</a:t></a:r></a:p>
+        </p:txBody>
+      </p:sp>
+    `;
+
+    const el = renderShape(parseShapeNode(parseXml(xml)), createMockRenderContext());
+    const text = el.querySelector('svg text')!;
+
+    expect(text.getAttribute('font-weight')).toBe('700');
+    expect(text.getAttribute('font-family')).toBe('"Public Sans Bold", "Public Sans", sans-serif');
+  });
+
   it('falls back to normal text rendering when text warp has multiple visible paragraphs', () => {
     const xml = `
       <p:sp xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"

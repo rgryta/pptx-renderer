@@ -24,7 +24,12 @@ import {
   parseNormAutofitFontScale,
   parseTextPercentage,
 } from './TextBodyProperties';
-import { cssFontFamilyStack, resolveThemeFontStack } from './fontResolver';
+import {
+  cssFontFamilyStack,
+  fontNameWeight,
+  parseFontNameStyle,
+  resolveThemeFontStack,
+} from './fontResolver';
 import { resolveSlideNavigationIndex, slideJumpTitle } from './navigation';
 import { renderMathFormula } from './MathRenderer';
 
@@ -1822,7 +1827,8 @@ export function renderTextBody(
       element.style.fontSize = `${fontSize * fontScale}pt`;
       // Bold: explicit run rPr > cellTextBold (table style tcTxStyle) > inherited styles
       const hasExplicitRunBold = run.properties?.attr('b') !== undefined;
-      if (hasExplicitRunBold ? runStyle.bold : (options?.cellTextBold ?? runStyle.bold)) {
+      const runBold = hasExplicitRunBold ? runStyle.bold : (options?.cellTextBold ?? runStyle.bold);
+      if (runBold) {
         element.style.fontWeight = 'bold';
       }
       // Italic: explicit run rPr > cellTextItalic (table style tcTxStyle) > inherited styles
@@ -1945,7 +1951,13 @@ export function renderTextBody(
       }
 
       const runFont = runCssFontFamily(run.properties, runStyle, options?.cellTextFontFamily, ctx);
-      if (runFont) element.style.fontFamily = runFont;
+      if (runFont) {
+        element.style.fontFamily = runFont;
+        const leadFont = runFont.split(',')[0].trim().replace(/^"|"$/g, '');
+        const nameWeight = fontNameWeight(leadFont, runBold);
+        if (nameWeight) element.style.fontWeight = nameWeight;
+        if (parseFontNameStyle(leadFont)?.italic) element.style.fontStyle = 'italic';
+      }
 
       // Character spacing (a:spc) — compact/tracking in points
       const usesWordArtVerticalAdvance =

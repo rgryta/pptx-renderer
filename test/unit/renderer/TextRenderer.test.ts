@@ -1405,7 +1405,7 @@ describe('TextRenderer — renderTextBody', () => {
       expect(span!.style.fontFamily).toContain('sans-serif');
     });
 
-    it('prefers system-ui before Arial for missing Office default Latin fonts (line-spacing oracle)', () => {
+    it('prefers Arial before system-ui for missing Office default Latin fonts', () => {
       const body = makeTextBody({
         paragraphs: [
           {
@@ -1426,10 +1426,64 @@ describe('TextRenderer — renderTextBody', () => {
       expect(span!.style.fontFamily).toContain('Aptos');
       expect(span!.style.fontFamily).toContain('Carlito');
       expect(span!.style.fontFamily).toContain('system-ui');
-      expect(span!.style.fontFamily.indexOf('system-ui')).toBeLessThan(
-        span!.style.fontFamily.indexOf('Arial'),
+      expect(span!.style.fontFamily.indexOf('Arial')).toBeLessThan(
+        span!.style.fontFamily.indexOf('system-ui'),
       );
       expect(span!.style.fontFamily).not.toContain('PingFang SC');
+    });
+
+    describe('weight words in family names', () => {
+      const renderRun = (rPr: string, embedded?: Map<string, string>) => {
+        const ctx = createMockRenderContext();
+        if (embedded) ctx.presentation.embeddedFontFamilies = embedded;
+        const container = document.createElement('div');
+        renderTextBody(
+          makeTextBody({
+            paragraphs: [{ runs: [{ text: 'Title', properties: xmlNode(rPr) }], level: 0 }],
+          }),
+          undefined,
+          ctx,
+          container,
+        );
+        return container.querySelector('span')!;
+      };
+
+      it('weights a run from the name and adds the base family', () => {
+        const span = renderRun('<rPr><latin typeface="Public Sans Bold"/></rPr>');
+        expect(span.style.fontWeight).toBe('700');
+        expect(span.style.fontFamily).toBe('"Public Sans Bold", "Public Sans", sans-serif');
+      });
+
+      it('keeps the name weight for b="0" and raises lighter names to bold for b="1"', () => {
+        expect(
+          renderRun('<rPr b="0"><latin typeface="Public Sans Bold"/></rPr>').style.fontWeight,
+        ).toBe('700');
+        expect(
+          renderRun('<rPr b="0"><latin typeface="Segoe UI Light"/></rPr>').style.fontWeight,
+        ).toBe('300');
+        expect(
+          renderRun('<rPr b="1"><latin typeface="Segoe UI Light"/></rPr>').style.fontWeight,
+        ).toBe('700');
+        expect(renderRun('<rPr b="1"><latin typeface="Arial Black"/></rPr>').style.fontWeight).toBe(
+          '900',
+        );
+        expect(renderRun('<rPr b="0"><latin typeface="Calibri"/></rPr>').style.fontWeight).toBe('');
+      });
+
+      it('sets italic from an Italic suffix', () => {
+        const span = renderRun('<rPr><latin typeface="Open Sans Light Italic"/></rPr>');
+        expect(span.style.fontWeight).toBe('300');
+        expect(span.style.fontStyle).toBe('italic');
+      });
+
+      it('never weights an embedded face, whose glyphs already carry the weight', () => {
+        const span = renderRun(
+          '<rPr><latin typeface="Public Sans Bold"/></rPr>',
+          new Map([['public sans bold', '__pptx_embedded_1_0']]),
+        );
+        expect(span.style.fontWeight).toBe('');
+        expect(span.style.fontFamily).toContain('__pptx_embedded_1_0');
+      });
     });
 
     it('falls back to theme minor font when no font specified', () => {
