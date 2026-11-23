@@ -11,7 +11,12 @@ import {
   resolveMediaPath,
 } from '../utils/media';
 import { isExternalTargetMode, RelEntry } from '../parser/RelParser';
-import { resolveColor, resolveFill, resolveLineStyle } from './StyleResolver';
+import {
+  resolveColor,
+  resolveColorWithPlaceholder,
+  resolveFill,
+  resolveLineStyle,
+} from './StyleResolver';
 import { hexToRgb } from '../utils/color';
 import { parseEmfContent } from '../utils/emfParser';
 import { renderPdfToImage } from '../utils/pdfRenderer';
@@ -1227,18 +1232,8 @@ function applyDuotoneFilter(
   img: HTMLImageElement,
   _wrapper: HTMLElement,
 ): void {
-  // Extract the two colors (first = dark, second = light)
-  const colorChildren = duotone.allChildren();
-  if (colorChildren.length < 2) return;
-
-  const { color: c1 } = resolveColor(colorChildren[0], ctx);
-  const { color: c2 } = resolveColor(colorChildren[1], ctx);
-  if (!c1 || !c2) return;
-
-  const hex1 = c1.startsWith('#') ? c1 : `#${c1}`;
-  const hex2 = c2.startsWith('#') ? c2 : `#${c2}`;
-  const rgb1 = hexToRgb(hex1);
-  const rgb2 = hexToRgb(hex2);
+  const colors = resolveDuotoneColors(duotone, ctx);
+  if (!colors) return;
 
   // After the image loads, redraw it through a canvas with duotone applied
   const apply = () => {
@@ -1255,18 +1250,7 @@ function applyDuotoneFilter(
 
     c.drawImage(img, 0, 0);
     const imageData = c.getImageData(0, 0, w, h);
-    const data = imageData.data;
-
-    for (let i = 0; i < data.length; i += 4) {
-      // Convert to grayscale using luminance weights
-      const gray = (0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2]) / 255;
-      // Linearly interpolate between color1 (dark) and color2 (light)
-      data[i] = Math.round(rgb1.r + (rgb2.r - rgb1.r) * gray);
-      data[i + 1] = Math.round(rgb1.g + (rgb2.g - rgb1.g) * gray);
-      data[i + 2] = Math.round(rgb1.b + (rgb2.b - rgb1.b) * gray);
-      // Alpha channel (data[i+3]) is preserved
-    }
-
+    applyDuotonePixels(imageData.data, colors);
     c.putImageData(imageData, 0, 0);
     img.src = canvas.toDataURL();
   };
@@ -1276,6 +1260,70 @@ function applyDuotoneFilter(
   } else {
     img.addEventListener('load', apply, { once: true });
   }
+}
+
+export function resolveDuotoneColors(
+  duotone: SafeXmlNode,
+  ctx: RenderContext,
+  placeholderColorNode?: SafeXmlNode,
+): [string, string] | undefined {
+  const colorChildren = duotone.allChildren();
+  if (colorChildren.length < 2) return undefined;
+  const [c1, c2] = colorChildren
+    .slice(0, 2)
+    .map((node) => resolveColorWithPlaceholder(node, ctx, placeholderColorNode).color);
+  if (!c1 || !c2) return undefined;
+  return [c1.startsWith('#') ? c1 : `#${c1}`, c2.startsWith('#') ? c2 : `#${c2}`];
+}
+
+function applyDuotonePixels(data: Uint8ClampedArray, [dark, light]: [string, string]): void {
+  const rgb1 = hexToRgb(dark);
+  const rgb2 = hexToRgb(light);
+  for (let i = 0; i < data.length; i += 4) {
+    // Convert to grayscale using luminance weights
+    const gray = (0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2]) / 255;
+    // Linearly interpolate between color1 (dark) and color2 (light)
+    data[i] = Math.round(rgb1.r + (rgb2.r - rgb1.r) * gray);
+    data[i + 1] = Math.round(rgb1.g + (rgb2.g - rgb1.g) * gray);
+    data[i + 2] = Math.round(rgb1.b + (rgb2.b - rgb1.b) * gray);
+    // Alpha channel (data[i+3]) is preserved
+  }
+}
+
+const MAX_DUOTONE_PIXELS = 16_000_000;
+
+export async function createDuotoneBlobUrl(
+  sourceUrl: string,
+  mediaPath: string,
+  colors: [string, string],
+  ctx: RenderContext,
+): Promise<string | undefined> {
+  const cacheKey = `${mediaPath}:duotone:${colors.join(':')}`;
+  const cached = ctx.mediaUrlCache.get(cacheKey);
+  if (cached) return cached;
+
+  const img = new Image();
+  img.src = sourceUrl;
+  await img.decode();
+  const w = img.naturalWidth;
+  const h = img.naturalHeight;
+  if (!w || !h || w * h > MAX_DUOTONE_PIXELS) return undefined;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const c = canvas.getContext('2d');
+  if (!c) return undefined;
+  c.drawImage(img, 0, 0);
+  const imageData = c.getImageData(0, 0, w, h);
+  applyDuotonePixels(imageData.data, colors);
+  c.putImageData(imageData, 0, 0);
+
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+  if (!blob || ctx.signal?.aborted) return undefined;
+  const url = ctx.mediaUrlCache.get(cacheKey) ?? URL.createObjectURL(blob);
+  ctx.mediaUrlCache.set(cacheKey, url);
+  return url;
 }
 
 // ---------------------------------------------------------------------------

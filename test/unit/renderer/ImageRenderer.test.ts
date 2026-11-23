@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderImage } from '../../../src/renderer/ImageRenderer';
+import { renderImage, resolveDuotoneColors } from '../../../src/renderer/ImageRenderer';
 import { parsePicNode } from '../../../src/model/nodes/PicNode';
 import { createMockRenderContext } from '../helpers/mockContext';
 import { xmlNode } from '../helpers/xmlNode';
@@ -3908,5 +3908,27 @@ describe('renderImage', () => {
       expect(el.querySelector(':scope > img')).toBeTruthy();
       expect(el.querySelector('[data-pptx-shape3d-bevel]')).toBeNull();
     });
+  });
+});
+
+describe('resolveDuotoneColors', () => {
+  it('resolves phClr to the placeholder colour including both sets of modifiers', () => {
+    const duotone = xmlNode(
+      `<a:duotone xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+         <a:srgbClr val="000000"/>
+         <a:schemeClr val="phClr"><a:lumMod val="50000"/></a:schemeClr>
+       </a:duotone>`,
+    );
+    const bgRef = xmlNode(
+      `<p:bgRef xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+                xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" idx="1003">
+         <a:srgbClr val="FF0000"><a:lumMod val="50000"/></a:srgbClr>
+       </p:bgRef>`,
+    );
+
+    expect(resolveDuotoneColors(duotone, createMockRenderContext(), bgRef)).toEqual([
+      '#000000',
+      '#400000',
+    ]);
   });
 });

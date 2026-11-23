@@ -441,6 +441,18 @@ describe('parseZip – categorization', () => {
     expect(files.diagramDrawings.size).toBe(0);
   });
 
+  it('parses theme part relationships into result.themeRels', async () => {
+    const relsXml = '<Relationships/>';
+    const buffer = await buildZip([
+      ...SKELETON,
+      { path: 'ppt/theme/_rels/theme1.xml.rels', data: relsXml },
+    ]);
+
+    const files = await parseZip(buffer);
+
+    expect(files.themeRels?.get('ppt/theme/_rels/theme1.xml.rels')).toBe(relsXml);
+  });
+
   it('parses non-numeric diagram drawing part names', async () => {
     const drawingXml = '<dsp:drawing />';
     const buffer = await buildZip([

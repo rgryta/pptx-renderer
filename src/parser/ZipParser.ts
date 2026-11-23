@@ -20,6 +20,7 @@ export interface PptxFiles {
   slideMasterRels: Map<string, string>;
   themes: Map<string, string>;
   themeOverrides?: Map<string, string>;
+  themeRels?: Map<string, string>; // ppt/theme/_rels/*.xml.rels
   media: Map<string, Uint8Array>;
   /** Embedded EOT font parts under ppt/fonts/. */
   fonts?: Map<string, Uint8Array>;
@@ -349,6 +350,7 @@ async function parseZipInternal(
     slideMasterRels: new Map(),
     themes: new Map(),
     themeOverrides: new Map(),
+    themeRels: new Map(),
     media: new Map(),
     fonts: new Map(),
     charts: new Map(),
@@ -482,6 +484,18 @@ async function parseZipInternal(
         normalizedPath,
         await readZipTextEntry(normalizedPath, file, limitState),
       );
+      return;
+    }
+
+    // --- Theme Rels ---
+    if (/^ppt\/theme\/_rels\/[^/]+\.xml\.rels$/.test(normalizedPath)) {
+      if (result.themeRels) {
+        setPathMapEntry(
+          result.themeRels,
+          normalizedPath,
+          await readZipTextEntry(normalizedPath, file, limitState),
+        );
+      }
       return;
     }
 
