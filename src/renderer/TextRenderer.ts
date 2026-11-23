@@ -758,6 +758,16 @@ function runHasHyperlink(rPr: SafeXmlNode | undefined): boolean {
   return rPr?.child('hlinkClick').exists() ?? false;
 }
 
+const HYPERLINK_COLOR_EXT_URI = '{A12FA001-AC4F-418D-AE19-62706E023703}';
+
+function hyperlinkKeepsTextColor(rPr: SafeXmlNode | undefined): boolean {
+  const exts = rPr?.child('hlinkClick').child('extLst').children('ext') ?? [];
+  return exts.some(
+    (ext) =>
+      ext.attr('uri') === HYPERLINK_COLOR_EXT_URI && ext.child('hlinkClr').attr('val') === 'tx',
+  );
+}
+
 function hasRenderableHyperlink(runStyle: MergedRunStyle): boolean {
   return Boolean(runStyle.hlinkClick) || runStyle.hlinkSlideIndex !== undefined;
 }
@@ -786,7 +796,7 @@ function shouldUseHyperlinkThemeColor(
   hasExplicitRunColor: boolean,
   ctx: RenderContext,
 ): boolean {
-  if (!hasRenderableHyperlink(runStyle)) return false;
+  if (!hasRenderableHyperlink(runStyle) || hyperlinkKeepsTextColor(run.properties)) return false;
   if (!hasExplicitRunColor || runColorKind === 'defaultTextScheme') return true;
   if (runColorKind !== 'explicit' || !hasSrgbSolidFill(run.properties)) return false;
   return hasMatchingNonHyperlinkTextColor(run, paragraph, runStyle.color, ctx);
