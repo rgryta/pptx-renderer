@@ -428,6 +428,19 @@ describe('parseZip – categorization', () => {
     expect(files.diagramDrawings.get('ppt/diagrams/drawing1.xml')).toBe(drawingXml);
   });
 
+  it('parses diagram part relationships into result.diagramRels', async () => {
+    const relsXml = '<Relationships/>';
+    const buffer = await buildZip([
+      ...SKELETON,
+      { path: 'ppt/diagrams/_rels/drawing1.xml.rels', data: relsXml },
+    ]);
+
+    const files = await parseZip(buffer);
+
+    expect(files.diagramRels?.get('ppt/diagrams/_rels/drawing1.xml.rels')).toBe(relsXml);
+    expect(files.diagramDrawings.size).toBe(0);
+  });
+
   it('parses non-numeric diagram drawing part names', async () => {
     const drawingXml = '<dsp:drawing />';
     const buffer = await buildZip([

@@ -30,6 +30,7 @@ export interface PptxFiles {
   chartStyles: Map<string, string>; // ppt/charts/style*.xml
   chartColors: Map<string, string>; // ppt/charts/colors*.xml
   diagramDrawings: Map<string, string>; // ppt/diagrams/drawing*.xml (SmartArt fallback)
+  diagramRels?: Map<string, string>; // ppt/diagrams/_rels/*.xml.rels
 }
 
 export interface ZipParseLimits {
@@ -355,6 +356,7 @@ async function parseZipInternal(
     chartStyles: new Map(),
     chartColors: new Map(),
     diagramDrawings: new Map(),
+    diagramRels: new Map(),
   };
 
   const limitState: ZipLimitState = {
@@ -534,6 +536,18 @@ async function parseZipInternal(
         normalizedPath,
         await readZipTextEntry(normalizedPath, file, limitState),
       );
+      return;
+    }
+
+    // --- Diagram Rels ---
+    if (/^ppt\/diagrams\/_rels\/[^/]+\.xml\.rels$/.test(normalizedPath)) {
+      if (result.diagramRels) {
+        setPathMapEntry(
+          result.diagramRels,
+          normalizedPath,
+          await readZipTextEntry(normalizedPath, file, limitState),
+        );
+      }
       return;
     }
 

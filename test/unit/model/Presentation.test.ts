@@ -364,6 +364,30 @@ describe('buildPresentation', () => {
     expect((pres as any).diagramDrawings?.get('ppt/diagrams/drawing1.xml')).toBe('<dsp:drawing/>');
   });
 
+  it('keys diagram part relationships by the diagram part path', () => {
+    const pres = buildPresentation(
+      makeMinimalFiles({
+        diagramDrawings: new Map([
+          ['ppt/diagrams/drawing1.xml', '<dsp:drawing/>'],
+          ['ppt/diagrams/drawing2.xml', '<dsp:drawing/>'],
+        ]),
+        diagramRels: new Map([
+          [
+            'ppt/diagrams/_rels/drawing1.xml.rels',
+            `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+              <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image2.png"/>
+            </Relationships>`,
+          ],
+        ]),
+      }),
+    );
+
+    expect(pres.diagramRels?.get('ppt/diagrams/drawing1.xml')?.get('rId1')?.target).toBe(
+      '../media/image2.png',
+    );
+    expect(pres.diagramRels?.has('ppt/diagrams/drawing2.xml')).toBe(false);
+  });
+
   it('resolves slide → layout → master → theme chain', () => {
     const pres = buildPresentation(makeMinimalFiles());
     const layoutPath = pres.slideToLayout.get(0);

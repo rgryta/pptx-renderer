@@ -251,6 +251,13 @@ export function renderGroup(
       ctx.groupTransformHasRotationOrFlip || node.rotation !== 0 || node.flipH || node.flipV,
     ),
   };
+  if (node.diagramDrawingPath) {
+    childCtx.slide = {
+      ...ctx.slide,
+      rels: ctx.presentation.diagramRels?.get(node.diagramDrawingPath) ?? new Map(),
+    };
+    childCtx.partPath = node.diagramDrawingPath;
+  }
   if (grpSpPr.exists()) {
     // Check if the group itself has a fill (solidFill, gradFill, etc.)
     // that children can inherit via grpFill
