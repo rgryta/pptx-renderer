@@ -14,7 +14,7 @@ import { RenderContext } from './RenderContext';
 import type { TextBody, TextParagraph, TextRun } from '../model/nodes/ShapeNode';
 import { PlaceholderInfo } from '../model/nodes/BaseNode';
 import { resolveColor, resolveColorToCss, resolveFill } from './StyleResolver';
-import { emuToPx, pctToDecimal, angleToDeg } from '../parser/units';
+import { emuToPx, pctToDecimal, angleToDeg, ptToPx } from '../parser/units';
 import { parseOoxmlBool } from '../parser/booleans';
 import { isExternalTargetMode } from '../parser/RelParser';
 import { isAllowedExternalMediaUrl, isAllowedExternalUrl } from '../utils/urlSafety';
@@ -1293,8 +1293,14 @@ interface RenderTextBodyOptions {
   trimOuterParagraphSpacing?: boolean;
   /** Treat absolute line spacing as inter-line spacing for a single-line paragraph. */
   compactSingleLineSpacing?: boolean;
+  /** Stored text area height (px); a fixed line pitch that fills two or more lines keeps its spacing. */
+  compactSingleLineTextHeight?: number;
   /** Replaces the stored normAutofit fontScale and drops its lnSpcReduction. */
   fontScaleOverride?: number;
+}
+
+function storedLineCount(textHeightPx: number | undefined, lineHeightPt: string): number {
+  return Math.round((textHeightPx ?? 0) / ptToPx(parseFloat(lineHeightPt)));
 }
 
 export function resolveTextFields(textBody: TextBody, ctx: RenderContext): TextBody {
@@ -1456,7 +1462,8 @@ export function renderTextBody(
       paraDiv.style.paddingLeft = `${merged.marginLeft}px`;
     }
     if (merged.textIndent !== undefined) {
-      paraDiv.style.textIndent = `${merged.textIndent}px`;
+      const minIndent = merged.marginLeft !== undefined ? -merged.marginLeft : -Infinity;
+      paraDiv.style.textIndent = `${Math.max(merged.textIndent, minIndent)}px`;
     }
     // Compute effective line-height (with optional lnSpcReduction from normAutofit)
     let effectiveLineHeight = merged.lineHeight ?? options?.defaultLineHeight;
@@ -1476,7 +1483,11 @@ export function renderTextBody(
       }
       if (options?.isVerticalText && !merged.lineHeightAbsolute) {
         effectiveLineHeight = '1';
-      } else if (isSingleLineAutoFitParagraph && merged.lineHeightAbsolute) {
+      } else if (
+        isSingleLineAutoFitParagraph &&
+        merged.lineHeightAbsolute &&
+        storedLineCount(options?.compactSingleLineTextHeight, effectiveLineHeight) < 2
+      ) {
         effectiveLineHeight = 'normal';
       }
       paraDiv.style.lineHeight = effectiveLineHeight!;

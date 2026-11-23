@@ -552,6 +552,28 @@ describe('TextRenderer — renderTextBody', () => {
       const para = container.children[0] as HTMLElement;
       expect(parseFloat(para.style.textIndent)).toBeLessThan(0);
     });
+
+    it.each([
+      ['plain', '0', '0px'],
+      ['plain', '114300', '-12px'],
+      ['bulleted', '0', '0px'],
+    ])(
+      'clamps a %s first line to the inset when the indent exceeds marL=%s',
+      (kind, marL, expected) => {
+        const bullet = kind === 'bulleted' ? '<buChar char="•"/>' : '';
+        const body = makeTextBody({
+          paragraphs: [
+            {
+              properties: xmlNode(`<pPr marL="${marL}" indent="-228600">${bullet}</pPr>`),
+              runs: [{ text: 'Item' }],
+              level: 0,
+            },
+          ],
+        });
+        const para = renderToContainer(body).children[0] as HTMLElement;
+        expect(para.style.textIndent).toBe(expected);
+      },
+    );
   });
 
   describe('bullets', () => {

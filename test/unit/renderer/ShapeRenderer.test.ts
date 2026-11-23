@@ -3073,6 +3073,39 @@ describe('ShapeRenderer', () => {
     }
   });
 
+  it.each([
+    ['square', '67.2pt'],
+    ['none', 'normal'],
+  ])(
+    'keeps fixed line spacing on a wrapped one-paragraph spAutoFit title whose stored height holds two lines (wrap=%s)',
+    (wrap, expected) => {
+      const xml = `
+        <p:sp xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+              xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+          <p:nvSpPr><p:cNvPr id="2" name="TextBox 1"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
+          <p:spPr>
+            <a:xfrm><a:off x="0" y="0"/><a:ext cx="4572000" cy="1798320"/></a:xfrm>
+            <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+          </p:spPr>
+          <p:txBody>
+            <a:bodyPr wrap="${wrap}"><a:spAutoFit/></a:bodyPr>
+            <a:p>
+              <a:pPr algn="ctr"><a:lnSpc><a:spcPts val="6720"/></a:lnSpc></a:pPr>
+              <a:r><a:rPr sz="4800"/><a:t>Quarterly results and outlook</a:t></a:r>
+            </a:p>
+          </p:txBody>
+        </p:sp>
+      `;
+
+      const el = renderShape(parseShapeNode(parseXml(xml)), createMockRenderContext());
+      const para = Array.from(el.querySelectorAll('div')).find(
+        (div) => div.style.lineHeight !== '' && div.textContent === 'Quarterly results and outlook',
+      );
+
+      expect(para?.style.lineHeight).toBe(expected);
+    },
+  );
+
   it('keeps Office default line height for multiline spAutoFit paragraphs with spacing (oracle-pypptx-text-0038-line-spacing)', () => {
     const xml = `
       <p:sp xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
