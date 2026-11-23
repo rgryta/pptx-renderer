@@ -8021,22 +8021,52 @@ describe('ChartRenderer', () => {
     });
 
     it.each([
-      ['outEnd', 'top'],
-      ['inEnd', 'insideTop'],
-      ['ctr', 'inside'],
-      ['inBase', 'insideBottom'],
-      [undefined, 'top'],
-    ])('maps bar data label position %s', (pos, expected) => {
-      const dLblPos = pos ? `<c:dLblPos val="${pos}"/>` : '';
-      const xml = buildChartSpaceXml({}).replace(
-        '<c:gapWidth val="219"/>',
-        `<c:dLbls><c:showVal val="1"/>${dLblPos}</c:dLbls><c:gapWidth val="219"/>`,
+      ['col', 'clustered', 'outEnd', 'outside', undefined],
+      ['col', 'clustered', 'inEnd', 'insideTop', 'insideBottom'],
+      ['col', 'clustered', 'ctr', 'inside', undefined],
+      ['col', 'clustered', 'inBase', 'insideBottom', 'insideTop'],
+      ['col', 'clustered', undefined, 'outside', undefined],
+      ['bar', 'clustered', 'outEnd', 'outside', undefined],
+      ['bar', 'clustered', 'inEnd', 'insideRight', 'insideLeft'],
+      ['bar', 'clustered', 'ctr', 'inside', undefined],
+      ['bar', 'clustered', 'inBase', 'insideLeft', 'insideRight'],
+      ['bar', 'clustered', undefined, 'outside', undefined],
+      ['bar', 'stacked', 'outEnd', 'inside', undefined],
+      ['bar', 'stacked', 'inEnd', 'inside', undefined],
+      ['col', 'percentStacked', undefined, 'inside', undefined],
+    ])(
+      'maps %s %s bar data label position %s',
+      (barDir, grouping, pos, expected, expectedNegative) => {
+        const dLblPos = pos ? `<c:dLblPos val="${pos}"/>` : '';
+        const xml = buildChartSpaceXml({ values: [607, -710, 866] })
+          .replace('<c:barDir val="col"/>', `<c:barDir val="${barDir}"/>`)
+          .replace('<c:grouping val="clustered"/>', `<c:grouping val="${grouping}"/>`)
+          .replace(
+            '<c:gapWidth val="219"/>',
+            `<c:dLbls><c:showVal val="1"/>${dLblPos}</c:dLbls><c:gapWidth val="219"/>`,
+          );
+
+        const { option } = parseChartOption(xml);
+        const series = (option.series as any[])[0];
+        const negativePoint = series.data[1];
+
+        expect(series.label.position).toBe(expected);
+        expect(negativePoint?.label?.position).toBe(expectedNegative);
+      },
+    );
+
+    it('reserves right grid room for outside labels on horizontal bars', () => {
+      const build = (labels: string) =>
+        buildChartSpaceXml({ values: [1234567, 2, 3] })
+          .replace('<c:barDir val="col"/>', '<c:barDir val="bar"/>')
+          .replace('<c:gapWidth val="219"/>', `${labels}<c:gapWidth val="219"/>`);
+
+      const withLabels = parseChartOption(build('<c:dLbls><c:showVal val="1"/></c:dLbls>'));
+      const withoutLabels = parseChartOption(build(''));
+
+      expect((withLabels.option.grid as any).right).toBeGreaterThan(
+        (withoutLabels.option.grid as any).right + 20,
       );
-
-      const { option } = parseChartOption(xml);
-      const series = (option.series as any[])[0];
-
-      expect(series.label.position).toBe(expected);
     });
 
     it.each([

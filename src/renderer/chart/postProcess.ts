@@ -174,6 +174,12 @@ export function applyDefaultTextColors(option: echarts.EChartsOption): void {
   }
 }
 
+export function estimateTextWidthPx(text: string, fontSize: number): number {
+  let w = 0;
+  for (const ch of text) w += ch.charCodeAt(0) > 0x2e80 ? fontSize : fontSize * 0.55;
+  return w;
+}
+
 export function applyLegendGridMargins(
   option: echarts.EChartsOption,
   chartNode: SafeXmlNode,
@@ -201,14 +207,7 @@ export function applyLegendGridMargins(
     );
     const fs = opt.legend?.textStyle?.fontSize ?? defaultFs ?? 12;
     const iconWidth = Number(opt.legend?.itemWidth) || fs;
-    let maxTextPx = 0;
-    for (const n of names) {
-      let w = 0;
-      for (const ch of n) {
-        w += ch.charCodeAt(0) > 0x2e80 ? fs : fs * 0.55;
-      }
-      if (w > maxTextPx) maxTextPx = w;
-    }
+    const maxTextPx = Math.max(0, ...names.map((n: string) => estimateTextWidthPx(n, fs)));
     const estimatedLegendPx = iconWidth + 8 + maxTextPx + 14;
     const plotArea = chartNode.child('plotArea');
     const isLineChart = plotArea.child('lineChart').exists();

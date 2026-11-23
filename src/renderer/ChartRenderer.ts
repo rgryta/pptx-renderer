@@ -49,6 +49,7 @@ import {
   applyLegendGridMargins,
   applyNiceAxisRange,
   type ChartPixelSize,
+  estimateTextWidthPx,
   extractChartDefaultFontSize,
   niceAxisInterval,
   niceAxisMax,
@@ -349,18 +350,23 @@ function scaledChartMargin(
 /**
  * Convert OOXML data label position to ECharts bar label position.
  */
-function mapBarLabelPosition(pos: string | undefined, isStacked: boolean): string {
+function mapBarLabelPosition(
+  pos: string | undefined,
+  isStacked: boolean,
+  isHorizontal: boolean,
+  isNegative: boolean,
+): string {
+  if (isStacked) return 'inside';
+  const [end, base] = isHorizontal ? ['insideRight', 'insideLeft'] : ['insideTop', 'insideBottom'];
   switch (pos) {
-    case 'outEnd':
-      return 'top';
     case 'inEnd':
-      return 'insideTop';
+      return isNegative ? base : end;
+    case 'inBase':
+      return isNegative ? end : base;
     case 'ctr':
       return 'inside';
-    case 'inBase':
-      return 'insideBottom';
     default:
-      return isStacked ? 'inside' : 'top';
+      return 'outside';
   }
 }
 
@@ -727,6 +733,7 @@ function buildBarChartOption(
     .sort((a, b) => a.order - b.order)
     .map((x) => x.ser);
 
+  let outsideLabelPx = 0;
   const series: EChartsTypes.BarSeriesOption[] = seriesArr.map((s, idx) => {
     // Capture formatCode for use in label formatter closure
     const fc = s.formatCode;
@@ -735,12 +742,13 @@ function buildBarChartOption(
 
     const buildLabel = (
       cfg: DataLabelConfig | Partial<DataLabelConfig> | undefined,
+      isNegative = false,
     ): EChartsTypes.BarSeriesOption['label'] => {
       if (!cfg?.showVal) return undefined;
       const label = {
         show: true,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        position: mapBarLabelPosition(cfg.position, isStacked) as any,
+        position: mapBarLabelPosition(cfg.position, isStacked, isHorizontal, isNegative) as any,
         fontSize: cfg.fontSize ?? 9,
         ...(cfg.color ? { color: cfg.color } : {}),
         ...(cfg.bold === true ? { fontWeight: 'bold' as const } : {}),
@@ -803,7 +811,29 @@ function buildBarChartOption(
           padding: perSeriesLabels?.padding,
           ...ov,
         };
-        pointLabel = buildLabel(merged);
+        pointLabel = buildLabel(merged, rawValue < 0);
+      } else if (label && rawValue < 0) {
+        const position = mapBarLabelPosition(
+          perSeriesLabels?.position,
+          isStacked,
+          isHorizontal,
+          true,
+        );
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        if (position !== label.position) pointLabel = { position: position as any };
+      }
+      if (isHorizontal && pointLabel?.show !== false) {
+        const effective = pointLabel?.position ?? label?.position;
+        const fontSize = pointLabel?.fontSize ?? label?.fontSize;
+        const formatter = (pointLabel?.formatter ?? label?.formatter) as
+          | ((params: { value: unknown }) => string)
+          | undefined;
+        if (effective === 'outside' && formatter && typeof fontSize === 'number') {
+          outsideLabelPx = Math.max(
+            outsideLabelPx,
+            estimateTextWidthPx(formatter({ value: rawValue }), fontSize),
+          );
+        }
       }
 
       if (!itemStyle && !pointLabel) return displayValue;
@@ -899,7 +929,7 @@ function buildBarChartOption(
   // ECharts containLabel already reserves the final value label. Keeping an
   // additional 28 px inset shortens horizontal bars compared with Office's
   // automatic plot area, so use the regular Cartesian edge inset here.
-  const gridRight = isHorizontal ? 10 : useCompactDefaults ? 15 : 10;
+  const gridRight = isHorizontal ? 10 + Math.ceil(outsideLabelPx) : useCompactDefaults ? 15 : 10;
   const tooltipFmt = pctFormat || sharedSeriesFormat;
   const baseGridBottom = getGridBottomPx(legendInfo);
   const gridBottom =
