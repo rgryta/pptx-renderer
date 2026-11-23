@@ -132,7 +132,15 @@ test('stale stored fontScale ignores trailing empty paragraphs when fitting visi
   expect(result.underflow).toBeLessThanOrEqual(1);
 });
 
-type Box = { body: string; runs: string; width: number; height: number; flipH?: boolean };
+type Box = {
+  body: string;
+  runs: string;
+  width: number;
+  height: number;
+  flipH?: boolean;
+  list?: string;
+  top?: number;
+};
 
 const renderBoxes = (page: import('@playwright/test').Page, boxes: Box[]) =>
   page.evaluate(async (boxes) => {
@@ -140,13 +148,14 @@ const renderBoxes = (page: import('@playwright/test').Page, boxes: Box[]) =>
     const { renderShape } = await import('/src/renderer/ShapeRenderer.ts');
     let left = 0;
     const rendered = boxes.map((box) => {
-      const fixture = renderTextFixture(box.body, '', '', '', box.runs, undefined, {
+      const fixture = renderTextFixture(box.body, '', box.list ?? '', '', box.runs, undefined, {
         cx: box.width * 9525,
         cy: box.height * 9525,
       });
       fixture.node.flipH = !!box.flipH;
       const element = box.flipH ? renderShape(fixture.node, fixture.ctx) : fixture.element;
       element.style.left = `${left}px`;
+      element.style.top = `${box.top ?? 0}px`;
       left += box.width + 27;
       document.body.append(element);
       return element;
@@ -170,6 +179,9 @@ const renderBoxes = (page: import('@playwright/test').Page, boxes: Box[]) =>
         fontSize: parseFloat(getComputedStyle(spans[0]).fontSize),
         transform: container.style.transform,
         firstLineChars: spans[0].getClientRects().length,
+        firstLineTop: rects[0].top - box.top,
+        lastLineBottom: box.bottom - rects[rects.length - 1].bottom,
+        contentOverflow: container.scrollHeight - container.clientHeight,
         leftToRight: charLeft(0) < charLeft(4),
         outside: Math.max(
           box.left - Math.min(...rects.map((rect) => rect.left)),
@@ -181,30 +193,65 @@ const renderBoxes = (page: import('@playwright/test').Page, boxes: Box[]) =>
     });
   }, boxes);
 
+const stalePlaceholderBoxes = (size: number, texts: string[], empties: number, list = '') => {
+  const runs = [
+    ...texts.map((text) => `<a:r><a:rPr sz="${size}"/><a:t>${text}</a:t></a:r>`),
+    '<a:endParaRPr sz="6400"/>',
+    ...Array.from({ length: empties }, () => '<a:endParaRPr sz="1900"/>'),
+  ].join('</a:p><a:p>');
+  const body =
+    '<a:bodyPr vert="horz" wrap="square" anchor="ctr"><a:normAutofit fontScale="25000" lnSpcReduction="20000"/></a:bodyPr>';
+  return [false, false, true].map((flipH) => ({
+    body,
+    runs,
+    list,
+    width: 433,
+    height: 179,
+    top: 194,
+    flipH,
+  }));
+};
+
+const heading = 'Alpha 13 issued total (From 01/04-2025 until 01/09 - 2026):';
+
 test('stale stored fontScale boxes side by side wrap at their own width and stay inside', async ({
   page,
 }) => {
   await page.goto('/test/browser/blank.html');
-  const runs = [
-    '<a:r><a:rPr sz="1900"/><a:t>Alpha 13 issued total (From 01/04-2025 until 01/09 - 2026):</a:t></a:r>',
-    ...['Issued in total : 103', 'Completed : 47', 'Open : 56', 'Overdue : 3', 'Next review Q3'].map(
-      (text) => `<a:r><a:rPr sz="1900"/><a:t>${text}</a:t></a:r>`,
-    ),
-    '<a:endParaRPr sz="6400"/>',
-    ...Array.from({ length: 15 }, () => '<a:endParaRPr sz="1900"/>'),
-  ].join('</a:p><a:p>');
-  const body =
-    '<a:bodyPr vert="horz" wrap="square" anchor="ctr"><a:normAutofit fontScale="25000" lnSpcReduction="20000"/></a:bodyPr>';
-  const results = await renderBoxes(
-    page,
-    [false, false, true].map((flipH) => ({ body, runs, width: 433, height: 179, flipH })),
-  );
+  const lines = [heading, 'Issued in total : 103', 'Completed : 47', 'Open : 56', 'Overdue : 3'];
+  const results = await renderBoxes(page, stalePlaceholderBoxes(1900, [...lines, 'Next'], 15));
   for (const result of results) {
     expect(result.transform).not.toContain('scale(');
     expect(result.fontSize).toBeGreaterThanOrEqual(0.6 * (1900 / 75));
     expect(result.firstLineChars).toBeGreaterThanOrEqual(2);
     expect(result.leftToRight).toBe(true);
+    expect(result.firstLineTop).toBeGreaterThanOrEqual(0);
+    expect(result.lastLineBottom).toBeGreaterThanOrEqual(0);
     expect(result.outside).toBeLessThanOrEqual(1);
+  }
+});
+
+test('stale stored fontScale boxes keep visible text inside when the empty tail overflows', async ({
+  page,
+}) => {
+  await page.goto('/test/browser/blank.html');
+  const results = await renderBoxes(
+    page,
+    stalePlaceholderBoxes(
+      1600,
+      [heading, 'Issued in total : 103', 'Completed : 47'],
+      25,
+      '<a:lvl1pPr><a:lnSpc><a:spcPct val="90000"/></a:lnSpc><a:spcBef><a:spcPts val="1000"/></a:spcBef></a:lvl1pPr>',
+    ),
+  );
+  for (const result of results) {
+    expect(result.transform).not.toContain('scale(');
+    expect(result.fontSize).toBeGreaterThanOrEqual(0.6 * (1600 / 75));
+    expect(result.leftToRight).toBe(true);
+    expect(result.firstLineTop).toBeGreaterThanOrEqual(0);
+    expect(result.lastLineBottom).toBeGreaterThanOrEqual(0);
+    expect(result.outside).toBeLessThanOrEqual(1);
+    expect(result.contentOverflow).toBeLessThanOrEqual(0);
   }
 });
 
