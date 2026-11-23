@@ -1265,7 +1265,7 @@ interface RenderTextBodyOptions {
   trimOuterParagraphSpacing?: boolean;
   /** Treat absolute line spacing as inter-line spacing for a single-line paragraph. */
   compactSingleLineSpacing?: boolean;
-  /** Replaces the stored normAutofit fontScale, drops its lnSpcReduction and scales point spacing. */
+  /** Replaces the stored normAutofit fontScale and drops its lnSpcReduction. */
   fontScaleOverride?: number;
 }
 
@@ -1318,7 +1318,6 @@ export function renderTextBody(
   let fontScale = 1;
   let lnSpcReduction = 0;
   const normAutofit = getEffectiveBodyPrChild(textBody, 'normAutofit');
-  const pointSpacingScale = options?.fontScaleOverride ?? 1;
   if (options?.fontScaleOverride !== undefined) {
     fontScale = options.fontScaleOverride;
   } else if (normAutofit?.exists()) {
@@ -1447,9 +1446,6 @@ export function renderTextBody(
           ).toFixed(3)}`;
         }
       }
-      if (merged.lineHeightAbsolute && pointSpacingScale !== 1) {
-        effectiveLineHeight = `${parseFloat(effectiveLineHeight) * pointSpacingScale}pt`;
-      }
       if (options?.isVerticalText && !merged.lineHeightAbsolute) {
         effectiveLineHeight = '1';
       } else if (isSingleLineAutoFitParagraph && merged.lineHeightAbsolute) {
@@ -1492,14 +1488,14 @@ export function renderTextBody(
     if (trimSpaceBefore) {
       paraDiv.style.marginTop = '0px';
     } else if (merged.spaceBefore !== undefined) {
-      paraDiv.style.marginTop = `${merged.spaceBefore * pointSpacingScale}pt`;
+      paraDiv.style.marginTop = `${merged.spaceBefore}pt`;
     } else if (merged.spaceBeforePct !== undefined) {
       paraDiv.style.marginTop = `${officeLinePoints(merged.spaceBeforePct, effectiveFontSize)}pt`;
     }
     if (trimSpaceAfter) {
       paraDiv.style.marginBottom = '0px';
     } else if (merged.spaceAfter !== undefined) {
-      paraDiv.style.marginBottom = `${merged.spaceAfter * pointSpacingScale}pt`;
+      paraDiv.style.marginBottom = `${merged.spaceAfter}pt`;
     } else if (merged.spaceAfterPct !== undefined) {
       paraDiv.style.marginBottom = `${officeLinePoints(merged.spaceAfterPct, effectiveFontSize)}pt`;
     }
