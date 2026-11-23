@@ -3037,6 +3037,7 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
       // Apply it as a CSS transform to shrink text so it fits the shape.
       let needsDynamicAutofit = false;
       let usesNativeShapeAutofitCandidate = false;
+      let growsShapeWithParagraphs = false;
       if (hasNormAutofit && normAutofit) {
         textContainer.style.overflowX = 'hidden';
         textContainer.style.overflowY = 'hidden';
@@ -3049,9 +3050,9 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
           textContainer.style.lineHeight = `${lnFactor}`;
         }
       }
-      // spAutoFit resizes the shape to contain the text. Keep the bounded measurement
-      // path for compact labels and explicit overflow axes; a standalone text box can
-      // switch to native shape growth after its wrapped and unwrapped bounds are known.
+      // spAutoFit resizes the shape to contain the text, not the text to fit the shape.
+      // Keep the bounded measurement path for compact labels and explicit overflow axes;
+      // standalone text boxes and multi-paragraph horizontal bodies grow the shape instead.
       if (hasSpAutoFit && !hasNormAutofit) {
         if (spAutoFitAllowsHorizontalOverflow === spAutoFitAllowsVerticalOverflow) {
           const overflow = spAutoFitAllowsHorizontalOverflow ? 'visible' : 'hidden';
@@ -3076,6 +3077,10 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
           (resolvedTextAnchor === undefined || resolvedTextAnchor === 't') &&
           horzOverflow === undefined &&
           vertOverflow === undefined;
+        growsShapeWithParagraphs =
+          vertOverflow === undefined &&
+          (textFlow === undefined || textFlow === 'horz') &&
+          visibleParagraphCount(textBody) > 1;
       }
       // When no autofit mode is serialized, PowerPoint still keeps simple
       // single-line shape labels within the shape bounds instead of wrapping them
@@ -3285,6 +3290,7 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
       if (needsDynamicAutofit) {
         const baseWrapperWidth = wrapper.style.width;
         const baseWrapperHeight = wrapper.style.height;
+        const baseWrapperTop = wrapper.style.top;
         const baseTransform = textContainer.style.transform;
         const baseTransformOrigin = textContainer.style.transformOrigin;
         const baseWidth = textContainer.style.width;
@@ -3298,6 +3304,7 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
         const applyDynamicAutofit = () => {
           wrapper.style.width = baseWrapperWidth;
           wrapper.style.height = baseWrapperHeight;
+          wrapper.style.top = baseWrapperTop;
           textContainer.style.transform = baseTransform;
           textContainer.style.transformOrigin = baseTransformOrigin;
           textContainer.style.width = baseWidth;
@@ -3432,6 +3439,22 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
               if (fittedWrapperWidth !== minW || fittedWrapperHeight !== minH) {
                 mainSvg.setAttribute('preserveAspectRatio', 'none');
               }
+            }
+            return;
+          }
+          if (growsShapeWithParagraphs && !wrappedHeightFits && containerH > 0) {
+            const growth = wrappedContentH - containerH;
+            const anchorShare =
+              resolvedTextAnchor === 'b' ? 1 : resolvedTextAnchor === 'ctr' ? 0.5 : 0;
+            const baseTop = parseFloat(baseWrapperTop);
+            if (anchorShare > 0 && Number.isFinite(baseTop)) {
+              wrapper.style.top = `${baseTop - growth * anchorShare}px`;
+            }
+            wrapper.style.height = `${minH + growth}px`;
+            textContainer.style.height = `${wrappedContentH}px`;
+            if (mainSvg) {
+              mainSvg.setAttribute('height', String(minH + growth));
+              mainSvg.setAttribute('preserveAspectRatio', 'none');
             }
             return;
           }
