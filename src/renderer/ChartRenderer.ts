@@ -8,7 +8,13 @@ import { ChartNodeData } from '../model/nodes/ChartNode';
 import { RenderContext } from './RenderContext';
 import { SafeXmlNode } from '../parser/XmlParser';
 import { hexToRgb, hslToRgb, rgbToHex, rgbToHsl } from '../utils/color';
-import { applyAxisInfo, getChartAxisIds, parseAxes, parseScatterAxes } from './chart/axes';
+import {
+  applyAxisInfo,
+  buildCategoryGroupAxis,
+  getChartAxisIds,
+  parseAxes,
+  parseScatterAxes,
+} from './chart/axes';
 import { formatValue } from './chart/format';
 import { markerSizeToPx } from './chart/style';
 import {
@@ -873,7 +879,8 @@ function buildBarChartOption(
   const overlap = chartTypeNode.child('overlap').numAttr('val');
 
   // Use categories from the first series that has them
-  const categories = seriesArr.find((s) => s.categories.length > 0)?.categories || [];
+  const categorySeries = seriesArr.find((s) => s.categories.length > 0);
+  const categories = categorySeries?.categories || [];
 
   const titleOption = buildChartTitleOption(chartNode, seriesArr, ctx, 12);
   const legendInfo = extractLegendInfo(chartNode, ctx);
@@ -1060,6 +1067,14 @@ function buildBarChartOption(
     axisLabel: { interval: 0, rotate: 0, fontSize: 10 },
   };
   applyAxisInfo(categoryAxisDef, categoryAxis, 'category');
+  const categoryGroupAxis = isHorizontal
+    ? undefined
+    : buildCategoryGroupAxis(
+        categoryAxisDef,
+        categoryAxis,
+        categorySeries?.categoryLevels,
+        categories.length,
+      );
 
   // Use a series-derived axis/tooltip format only when all series share it.
   const sharedSeriesFormat = getSharedSeriesFormatCode(seriesArr);
@@ -1146,7 +1161,11 @@ function buildBarChartOption(
       bottom: gridBottom,
       ...manualGrid,
     },
-    xAxis: isHorizontal ? valueAxisDef : categoryAxisDef,
+    xAxis: isHorizontal
+      ? valueAxisDef
+      : categoryGroupAxis
+        ? [categoryAxisDef, categoryGroupAxis]
+        : categoryAxisDef,
     yAxis: isHorizontal ? categoryAxisDef : valueAxisDef,
     series,
   } as EChartsTypes.EChartsOption;
@@ -1160,7 +1179,8 @@ function buildLineChartOption(
   isArea: boolean,
   chartPalette?: string[],
 ): EChartsTypes.EChartsOption {
-  const categories = seriesArr.find((s) => s.categories.length > 0)?.categories || [];
+  const categorySeries = seriesArr.find((s) => s.categories.length > 0);
+  const categories = categorySeries?.categories || [];
   const titleOption = buildChartTitleOption(chartNode, seriesArr, ctx, 14);
   const legendInfo = extractLegendInfo(chartNode, ctx);
   const legendOpt = legendInfo?.option;
@@ -1343,6 +1363,12 @@ function buildLineChartOption(
     axisLabel: { interval: 0, rotate: 0 },
   };
   applyAxisInfo(xAxisDef, categoryAxis, 'category');
+  const categoryGroupAxis = buildCategoryGroupAxis(
+    xAxisDef,
+    categoryAxis,
+    categorySeries?.categoryLevels,
+    categories.length,
+  );
 
   const manualGrid = extractManualLayoutGrid(chartNode);
   const useCompactDefaults =
@@ -1406,7 +1432,7 @@ function buildLineChartOption(
       bottom: gridBottom,
       ...manualGrid,
     },
-    xAxis: xAxisDef,
+    xAxis: categoryGroupAxis ? [xAxisDef, categoryGroupAxis] : xAxisDef,
     yAxis: yAxisDef,
     series,
   };

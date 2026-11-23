@@ -6,6 +6,7 @@ export interface SeriesData {
   name: string;
   order: number;
   categories: string[];
+  categoryLevels?: CategoryGroup[][];
   values: number[];
   xValues?: number[];
   xBlankIndices?: Set<number>;
@@ -22,6 +23,12 @@ export interface SeriesData {
   smooth?: boolean;
   lineWidth?: number;
   lineNoFill?: boolean;
+}
+
+export interface CategoryGroup {
+  label: string;
+  start: number;
+  end: number;
 }
 
 export type ChartLineType = 'solid' | 'dashed' | 'dotted';
@@ -71,6 +78,7 @@ export interface AxisInfo {
   labelFontSize?: number;
   lineColor?: string;
   majorGridlineStyle?: ChartLineStyle;
+  noMultiLvlLbl?: boolean;
 }
 
 export interface DataLabelConfig {

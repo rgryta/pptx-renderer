@@ -1,6 +1,11 @@
 import { SafeXmlNode } from '../../parser/XmlParser';
 import { RenderContext } from '../RenderContext';
-import { extractFormatCode, extractNumericValuesWithBlanks, extractStringValues } from './format';
+import {
+  extractCategoryLevels,
+  extractFormatCode,
+  extractNumericValuesWithBlanks,
+  extractStringValues,
+} from './format';
 import { parseOoxmlBoolElement } from './ooxml';
 import {
   extractDataPointStyles,
@@ -59,6 +64,7 @@ export function parseSeries(chartTypeNode: SafeXmlNode, ctx: RenderContext): Ser
 
     const cat = ser.child('cat');
     const categories = extractStringValues(cat);
+    const categoryLevels = extractCategoryLevels(cat);
 
     const val = ser.child('val');
     const numericValues = extractNumericValuesWithBlanks(val);
@@ -115,6 +121,7 @@ export function parseSeries(chartTypeNode: SafeXmlNode, ctx: RenderContext): Ser
       name,
       order,
       categories,
+      ...(categoryLevels.length > 0 ? { categoryLevels } : {}),
       values,
       xValues,
       xBlankIndices,
