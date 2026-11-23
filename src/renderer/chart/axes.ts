@@ -352,6 +352,21 @@ export function applyAxisInfo(
   }
 }
 
+export const CATEGORY_GROUP_AXIS_ID = 'categoryGroup';
+
+/** Sizes each group row from its leaf row's final font size, so run it after default font sizes. */
+export function sizeCategoryGroupAxes(xAxis: unknown): void {
+  const axes = (Array.isArray(xAxis) ? xAxis : []) as Record<string, unknown>[];
+  axes.forEach((group, index) => {
+    const leaf = axes[index - 1];
+    if (group?.id !== CATEGORY_GROUP_AXIS_ID || !leaf) return;
+    const fontSize = (leaf.axisLabel as { fontSize?: number } | undefined)?.fontSize;
+    const rowPx = Math.round((fontSize ?? DEFAULT_CHART_AXIS_LABEL_FONT_SIZE) * 1.2);
+    (group.axisTick as Record<string, unknown>).length = 8 + 2 * rowPx;
+    if (typeof leaf.nameGap === 'number') leaf.nameGap += rowPx;
+  });
+}
+
 /** Slots at every half leaf step, so each unequal span's centre and boundaries land on a slot. */
 export function buildCategoryGroupAxis(
   leafAxis: Record<string, unknown>,
@@ -375,12 +390,9 @@ export function buildCategoryGroupAxis(
 
   const leafLabel = (leafAxis.axisLabel as Record<string, unknown>) ?? {};
   const leafTick = (leafAxis.axisTick as Record<string, unknown>) ?? {};
-  const rowPx = Math.round(
-    ((leafLabel.fontSize as number) ?? DEFAULT_CHART_AXIS_LABEL_FONT_SIZE) * 1.2,
-  );
-  if (typeof leafAxis.nameGap === 'number') leafAxis.nameGap += rowPx;
 
   return {
+    id: CATEGORY_GROUP_AXIS_ID,
     type: 'category',
     position: 'bottom',
     data,
@@ -392,7 +404,6 @@ export function buildCategoryGroupAxis(
     axisTick: {
       show: leafTick.show !== false,
       interval: (index: number) => ticks.has(index),
-      length: 8 + 2 * rowPx,
       lineStyle: leafTick.lineStyle,
     },
     axisLabel: {

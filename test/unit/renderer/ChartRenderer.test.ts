@@ -5272,6 +5272,7 @@ describe('ChartRenderer', () => {
     const buildXml = (
       chartType: 'lineChart' | 'barChart',
       values: readonly number[],
+      valAxExtra = '',
     ) => `<c:chartSpace
       xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"
       xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
@@ -5289,7 +5290,7 @@ describe('ChartRenderer', () => {
             <c:axId val="1"/><c:axId val="2"/>
           </c:${chartType}>
           <c:catAx><c:axId val="1"/><c:delete val="0"/><c:axPos val="b"/><c:crossAx val="2"/></c:catAx>
-          <c:valAx><c:axId val="2"/><c:scaling/><c:delete val="0"/><c:axPos val="l"/><c:majorGridlines/><c:crossAx val="1"/></c:valAx>
+          <c:valAx><c:axId val="2"/><c:scaling/><c:delete val="0"/><c:axPos val="l"/><c:majorGridlines/>${valAxExtra}<c:crossAx val="1"/></c:valAx>
         </c:plotArea>
         <c:legend><c:legendPos val="b"/><c:overlay val="0"/></c:legend>
       </c:chart>
@@ -5308,6 +5309,13 @@ describe('ChartRenderer', () => {
       );
 
       expect(option.yAxis).toMatchObject(expected);
+    });
+
+    it('keeps the zoomed minimum on an explicit c:majorUnit grid', () => {
+      const xml = buildXml('lineChart', [2050, 2200, 2350], '<c:majorUnit val="50"/>');
+      const { option } = parseChartXml(parseXml(xml), createMockRenderContext(), undefined, size);
+
+      expect(option.yAxis).toMatchObject({ min: 1900, max: 2400, interval: 50 });
     });
   });
 
@@ -7883,6 +7891,33 @@ describe('ChartRenderer', () => {
 
       expect(yAxis.interval).toBe(20);
       expect(yAxis.max).toBe(160);
+    });
+
+    it('pins the area value-axis maximum at zero for all-negative data', () => {
+      const xml = `<c:chartSpace
+        xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"
+        xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+        <c:chart>
+          <c:plotArea>
+            <c:areaChart>
+              <c:grouping val="standard"/>
+              <c:ser>
+                <c:idx val="0"/><c:order val="0"/>
+                <c:cat><c:strRef><c:strCache><c:ptCount val="2"/><c:pt idx="0"><c:v>A</c:v></c:pt><c:pt idx="1"><c:v>B</c:v></c:pt></c:strCache></c:strRef></c:cat>
+                <c:val><c:numRef><c:numCache><c:ptCount val="2"/><c:pt idx="0"><c:v>-1.5</c:v></c:pt><c:pt idx="1"><c:v>-3</c:v></c:pt></c:numCache></c:numRef></c:val>
+              </c:ser>
+              <c:axId val="1"/><c:axId val="2"/>
+            </c:areaChart>
+            <c:catAx><c:axId val="1"/><c:delete val="0"/><c:crossAx val="2"/></c:catAx>
+            <c:valAx><c:axId val="2"/><c:delete val="0"/><c:crossAx val="1"/></c:valAx>
+          </c:plotArea>
+        </c:chart>
+      </c:chartSpace>`;
+
+      const yAxis = parseChartOption(xml).option.yAxis as any;
+
+      expect(yAxis.max).toBe(0);
+      expect(yAxis.min).toBeLessThan(-3);
     });
 
     it('keeps line chart category axes gapped while stacking series values', () => {
