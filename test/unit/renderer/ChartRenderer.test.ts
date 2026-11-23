@@ -3045,11 +3045,12 @@ describe('ChartRenderer', () => {
           </c:chart>
         </c:chartSpace>`;
 
-      const { option } = parseChartOption(xml);
+      const { option, unsupported } = parseChartOption(xml);
       expect((option.title as any)?.text).toBe('Unsupported chart');
+      expect(unsupported).toBe('Chart has no plot area');
     });
 
-    it('should handle empty chart (no series)', () => {
+    it('draws an empty bar chart without a placeholder or an error', () => {
       const xml = `
         <c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"
                       xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
@@ -3070,8 +3071,52 @@ describe('ChartRenderer', () => {
           </c:chart>
         </c:chartSpace>`;
 
-      const { option } = parseChartOption(xml);
-      expect((option.title as any)?.text).toBe('Unsupported chart type');
+      const { option, unsupported } = parseChartOption(xml);
+      expect((option.title as any)?.text).not.toBe('Unsupported chart type');
+      expect(option.xAxis).toBeDefined();
+      expect(unsupported).toBeUndefined();
+    });
+
+    it('draws only the title of a pie chart without series', () => {
+      const xml = `
+        <c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"
+                      xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+          <c:chart>
+            <c:title><c:tx><c:rich><a:bodyPr/><a:p><a:r><a:t>Share</a:t></a:r></a:p></c:rich></c:tx></c:title>
+            <c:plotArea>
+              <c:pieChart><c:varyColors val="1"/></c:pieChart>
+            </c:plotArea>
+          </c:chart>
+        </c:chartSpace>`;
+
+      const { option, unsupported } = parseChartOption(xml);
+      expect((option.title as any)?.text).toBe('Share');
+      expect(option.series).toBeUndefined();
+      expect(unsupported).toBeUndefined();
+    });
+
+    it('reports a plot area whose only chart type is not supported', () => {
+      const xml = `
+        <c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart">
+          <c:chart>
+            <c:plotArea>
+              <c:ofPieChart><c:ofPieType val="pie"/><c:ser/></c:ofPieChart>
+            </c:plotArea>
+          </c:chart>
+        </c:chartSpace>`;
+
+      expect(parseChartOption(xml).unsupported).toBe('Unsupported chart type: ofPieChart');
+    });
+
+    it('renders the supported type and reports nothing when mixed with an unsupported one', () => {
+      const xml = buildChartSpaceXml({}).replace(
+        '</c:plotArea>',
+        '<c:ofPieChart><c:ser/></c:ofPieChart></c:plotArea>',
+      );
+
+      const { option, unsupported } = parseChartOption(xml);
+      expect(option.series).toBeDefined();
+      expect(unsupported).toBeUndefined();
     });
 
     it('should handle series with no values but still render', () => {
@@ -8013,9 +8058,10 @@ describe('ChartRenderer', () => {
           </c:chart>
         </c:chartSpace>`;
 
-      const { option } = parseChartOption(xml);
+      const { option, unsupported } = parseChartOption(xml);
 
       expect((option.title as any).text).toBe('Unsupported chart type');
+      expect(unsupported).toBe('Unsupported chart type: unknownChart');
     });
 
     it('uses chart style from AlternateContent and master color mapping without overriding chart-local overrides', () => {
@@ -8741,9 +8787,10 @@ describe('ChartRenderer', () => {
           <c:chart/>
         </c:chartSpace>`;
 
-      const { option, chartFrameStyle } = parseChartOption(xml);
+      const { option, chartFrameStyle, unsupported } = parseChartOption(xml);
 
       expect((option.title as any).text).toBe('Unsupported chart');
+      expect(unsupported).toBe('Chart has no plot area');
       expect(chartFrameStyle).toMatchObject({
         borderColor: '#123456',
         borderWidth: expect.any(Number),

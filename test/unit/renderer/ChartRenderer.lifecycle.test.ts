@@ -450,6 +450,47 @@ describe('ChartRenderer chartInstances lifecycle', () => {
     }
   });
 
+  it('reports an unsupported chart type through onNodeError', () => {
+    const ctx = createMockRenderContext();
+    ctx.presentation.charts = new Map([
+      [
+        'ppt/charts/chart1.xml',
+        parseXml(
+          buildSimpleChartXml().replace(
+            /<c:barChart>[\s\S]*<\/c:barChart>/,
+            '<c:ofPieChart><c:ser/></c:ofPieChart>',
+          ),
+        ),
+      ],
+    ]);
+    const onNodeError = vi.fn();
+    ctx.onNodeError = onNodeError;
+
+    const node = makeChartNode();
+    renderChart(node, ctx);
+
+    expect(onNodeError).toHaveBeenCalledWith(
+      node.id,
+      new Error('Unsupported chart type: ofPieChart'),
+    );
+  });
+
+  it('reports a chart part that is not loaded through onNodeError', () => {
+    const ctx = createMockRenderContext();
+    ctx.presentation.charts = new Map();
+    const onNodeError = vi.fn();
+    ctx.onNodeError = onNodeError;
+
+    const node = makeChartNode();
+    const wrapper = renderChart(node, ctx);
+
+    expect(wrapper.textContent).toBe('Chart not found');
+    expect(onNodeError).toHaveBeenCalledWith(
+      node.id,
+      new Error('Chart not found: ppt/charts/chart1.xml'),
+    );
+  });
+
   it('renders custom side legend overlay and disables echarts legend for right-side scatter legends', () => {
     const ctx = createMockRenderContext();
     ctx.presentation.charts = new Map([
