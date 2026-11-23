@@ -3,6 +3,7 @@
  */
 
 import { SafeXmlNode } from '../parser/XmlParser';
+import { parseOoxmlBool } from '../parser/booleans';
 import { RenderContext } from './RenderContext';
 import {
   applyColorModifiers,
@@ -700,6 +701,8 @@ export interface GradientFillData {
   pathType?: string;
   /** OOXML fillToRect focus rectangle, expressed as relative offsets from the tile edge. */
   fillToRect?: GradientFocusRect;
+  /** False when the gradient stays fixed on the page while the shape rotates or flips. */
+  rotWithShape?: boolean;
 }
 
 export interface GradientFocusRect {
@@ -729,6 +732,38 @@ function getFillToRectCenter(fillToRect: GradientFocusRect | undefined): {
     cx: (fillToRect.l + (1 - fillToRect.r)) / 2,
     cy: (fillToRect.t + (1 - fillToRect.b)) / 2,
   };
+}
+
+export function counterShapeTransform(
+  gradientFillData: GradientFillData,
+  rotation: number,
+  flipH: boolean,
+  flipV: boolean,
+): GradientFillData {
+  const rad = (rotation * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const toLocal = (x: number, y: number): [number, number] => {
+    const rx = (x - 0.5) * cos + (y - 0.5) * sin;
+    const ry = (y - 0.5) * cos - (x - 0.5) * sin;
+    return [0.5 + (flipH ? -rx : rx), 0.5 + (flipV ? -ry : ry)];
+  };
+
+  let angle = gradientFillData.angle - rotation;
+  if (flipH) angle = 180 - angle;
+  if (flipV) angle = -angle;
+
+  const source = gradientFillData.fillToRect;
+  if (!source) return { ...gradientFillData, angle };
+  const [ax, ay] = toLocal(source.l, source.t);
+  const [bx, by] = toLocal(1 - source.r, 1 - source.b);
+  const fillToRect = {
+    l: Math.min(ax, bx),
+    t: Math.min(ay, by),
+    r: 1 - Math.max(ax, bx),
+    b: 1 - Math.max(ay, by),
+  };
+  return { ...gradientFillData, angle, fillToRect, ...getFillToRectCenter(fillToRect) };
 }
 
 function clampUnit(value: number): number {
@@ -799,11 +834,12 @@ function resolveGradientFillNode(
 
   if (stops.length === 0) return null;
   stops.sort((a, b) => a.position - b.position);
+  const rotWithShape = parseOoxmlBool(gradFill.attr('rotWithShape'), true);
 
   const lin = gradFill.child('lin');
   if (lin.exists()) {
     const angle = angleToDeg(lin.numAttr('ang') ?? 0);
-    return { type: 'linear', stops, angle, colorInterpolation: 'linearRGB' };
+    return { type: 'linear', stops, angle, colorInterpolation: 'linearRGB', rotWithShape };
   }
 
   const path = gradFill.child('path');
@@ -821,11 +857,12 @@ function resolveGradientFillNode(
         pathType: pathType,
         fillToRect,
         colorInterpolation: 'linearRGB',
+        rotWithShape,
       };
     }
   }
 
-  return { type: 'linear', stops, angle: 0, colorInterpolation: 'linearRGB' };
+  return { type: 'linear', stops, angle: 0, colorInterpolation: 'linearRGB', rotWithShape };
 }
 
 /**
