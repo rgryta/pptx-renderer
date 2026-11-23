@@ -57,8 +57,11 @@ import {
   type ChartPixelSize,
   estimateTextWidthPx,
   extractChartDefaultFontSize,
+  axisMaxAbove,
   niceAxisInterval,
   niceAxisMax,
+  OFFICE_VALUE_AXIS_TICKS,
+  valueExtent,
 } from './chart/postProcess';
 import { extractBackgroundColors, extractChartFrameStyle } from './chart/frame';
 import { buildCustomLegendOverlay } from './chart/legendOverlay';
@@ -678,21 +681,17 @@ function applyAreaAxisRange(
 ): void {
   const values = collectSeriesValues(seriesArr, stacked).filter((value) => Number.isFinite(value));
   if (values.length === 0) return;
-  const dataMin = Math.min(...values);
-  const dataMax = Math.max(...values);
-  const interval = niceAxisInterval(dataMax, dataMin, 8);
+  const { min: dataMin, max: dataMax } = valueExtent(values);
+  const interval =
+    typeof axisDef.interval === 'number'
+      ? axisDef.interval
+      : niceAxisInterval(dataMax, dataMin, OFFICE_VALUE_AXIS_TICKS);
   if (axisDef.min === undefined && dataMin >= 0) axisDef.min = 0;
   if (axisDef.interval === undefined) axisDef.interval = interval;
   if (axisDef.max === undefined) {
-    if (stacked) {
-      axisDef.max = Math.ceil(dataMax / interval) * interval + interval;
-    } else {
-      let max = niceAxisMax(dataMax, dataMin, 8);
-      if (max > dataMax && max - dataMax < interval * 0.25) {
-        max += interval;
-      }
-      axisDef.max = max;
-    }
+    axisDef.max = stacked
+      ? Math.ceil(dataMax / interval) * interval + interval
+      : axisMaxAbove(dataMax, interval, true);
   }
 }
 

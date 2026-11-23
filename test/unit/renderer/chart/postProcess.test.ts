@@ -372,4 +372,61 @@ describe('chart option post-process helpers', () => {
       }
     });
   });
+
+  describe('Office automatic value-axis scale', () => {
+    const chartSize = { w: 600, h: 400 };
+    const axisFor = (type: string, series: { data: (number | null)[]; stack?: string }[]) => {
+      const option = {
+        xAxis: { type: 'category' },
+        yAxis: { type: 'value' } as Record<string, unknown>,
+        series: series.map((s) => ({ type, ...s })),
+      };
+      applyNiceAxisRange(option, chartSize);
+      return option.yAxis;
+    };
+
+    it.each([
+      [[1], 1.2, 0.2],
+      [[5], 6, 1],
+      [[10], 12, 2],
+      [[12], 14, 2],
+      [[100], 120, 20],
+    ])('scales bar data %j to max %d step %d', (data, max, interval) => {
+      const axis = axisFor('bar', [{ data }]);
+      expect(axis.min).toBe(0);
+      expect(axis.max).toBeCloseTo(max, 10);
+      expect(axis.interval).toBeCloseTo(interval, 10);
+    });
+
+    it('honours an explicit major unit', () => {
+      const option = {
+        xAxis: { type: 'category' },
+        yAxis: { type: 'value', interval: 0.25 } as Record<string, unknown>,
+        series: [{ type: 'bar', data: [1] }],
+      };
+      applyNiceAxisRange(option, chartSize);
+      expect(option.yAxis).toMatchObject({ min: 0, max: 1.25, interval: 0.25 });
+    });
+
+    it('keeps zero as the max for all-negative data', () => {
+      expect(axisFor('bar', [{ data: [-5, -1] }])).toMatchObject({ min: -6, max: 0, interval: 1 });
+    });
+
+    it('stacks positive and negative values separately', () => {
+      const axis = axisFor('bar', [
+        { data: [5], stack: 'total' },
+        { data: [-3], stack: 'total' },
+      ]);
+      expect(axis).toMatchObject({ min: -4, max: 6, interval: 1 });
+    });
+
+    it('ignores blank points instead of counting them as zero', () => {
+      const axis = axisFor('line', [{ data: [null, 2310, 2205, 2140] }]);
+      expect(axis).toMatchObject({ min: 2050, max: 2350, interval: 50 });
+    });
+
+    it('gives 0..1 step 0.2 for all-zero data', () => {
+      expect(axisFor('bar', [{ data: [0, 0] }])).toMatchObject({ min: 0, max: 1, interval: 0.2 });
+    });
+  });
 });

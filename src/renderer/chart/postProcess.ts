@@ -368,18 +368,19 @@ export function applyNiceAxisRange(
   const yValues: number[] = [];
   const seriesArr = Array.isArray(opt.series) ? opt.series : opt.series ? [opt.series] : [];
 
-  const stackGroups = new Map<string, { axisIndex: number; values: number[][] }>();
+  const stackGroups = new Map<string, { axisIndex: number; values: (number | undefined)[][] }>();
   const unstackedValues: number[] = [];
   const valuesByYAxis = new Map<number, number[]>();
 
   const appendYAxisValues = (axisIndex: number, values: number[]) => {
     if (!valuesByYAxis.has(axisIndex)) valuesByYAxis.set(axisIndex, []);
-    valuesByYAxis.get(axisIndex)!.push(...values);
+    const target = valuesByYAxis.get(axisIndex)!;
+    for (const v of values) target.push(v);
   };
 
   for (const s of seriesArr) {
     if (!s.data) continue;
-    const vals: number[] = [];
+    const vals: (number | undefined)[] = [];
     for (const d of s.data) {
       if (typeof d === 'number') {
         vals.push(d);
@@ -394,7 +395,7 @@ export function applyNiceAxisRange(
           if (typeof v === 'number') vals.push(v);
         }
       } else {
-        vals.push(0);
+        vals.push(undefined);
       }
     }
     const yAxisIndex =
@@ -404,30 +405,35 @@ export function applyNiceAxisRange(
       if (!stackGroups.has(key)) stackGroups.set(key, { axisIndex: yAxisIndex, values: [] });
       stackGroups.get(key)!.values.push(vals);
     } else {
-      unstackedValues.push(...vals);
-      appendYAxisValues(yAxisIndex, vals);
+      const present = vals.filter((v): v is number => v !== undefined);
+      for (const v of present) unstackedValues.push(v);
+      appendYAxisValues(yAxisIndex, present);
     }
   }
 
   for (const group of stackGroups.values()) {
     const sums: number[] = [];
-    const maxLen = Math.max(...group.values.map((v) => v.length));
+    const maxLen = group.values.reduce((len, v) => Math.max(len, v.length), 0);
     for (let i = 0; i < maxLen; i++) {
-      let sum = 0;
+      let positive = 0;
+      let negative = 0;
       for (const vals of group.values) {
-        sum += vals[i] ?? 0;
+        const v = vals[i] ?? 0;
+        if (v > 0) positive += v;
+        else negative += v;
       }
-      sums.push(sum);
-      allValues.push(sum);
+      sums.push(positive);
+      if (negative < 0) sums.push(negative);
     }
+    for (const v of sums) allValues.push(v);
     appendYAxisValues(group.axisIndex, sums);
   }
-  allValues.push(...unstackedValues);
+  for (const v of unstackedValues) allValues.push(v);
 
   const hasBarSeries = seriesArr.some((s: { type?: string }) => s.type === 'bar');
   const hasNonBarSeries = seriesArr.some((s: { type?: string }) => s.type && s.type !== 'bar');
   const isPureBarChart = hasBarSeries && !hasNonBarSeries;
-  const defaultDesiredTicks = isPureBarChart ? 10 : 8;
+  const defaultDesiredTicks = OFFICE_VALUE_AXIS_TICKS;
   const labelSpacingFactor = isPureBarChart ? 2.6 : 2.0;
 
   if (allValues.length === 0) return;
@@ -445,15 +451,10 @@ export function applyNiceAxisRange(
   ) => {
     if (!axis || axis.type !== 'value' || values.length === 0) return;
     if (axis.min !== undefined && axis.max !== undefined) return;
-    const dataMin = Math.min(...values);
-    const dataMax = Math.max(...values);
-    const interval = niceAxisInterval(dataMax, dataMin, desiredTicks);
+    const { min: dataMin, max: dataMax } = valueExtent(values);
+    const interval = axis.interval ?? niceAxisInterval(dataMax, dataMin, desiredTicks);
     if (axis.max === undefined) {
-      let max = niceAxisMax(dataMax, dataMin, desiredTicks);
-      if (max > dataMax && max - dataMax < interval * 0.25) {
-        max += interval;
-      }
-      axis.max = max;
+      axis.max = axisMaxAbove(dataMax, interval, true);
     }
     if (axis.min === undefined && dataMin >= 0) {
       axis.min = 0;
@@ -465,8 +466,7 @@ export function applyNiceAxisRange(
 
   const scatterDesiredTicks = (values: number[]): number => {
     if (values.length === 0) return 8;
-    const dataMin = Math.min(...values);
-    const dataMax = Math.max(...values);
+    const { min: dataMin, max: dataMax } = valueExtent(values);
     const spanFromZero = dataMax - Math.min(0, dataMin);
     return spanFromZero <= 3 ? 3 : 8;
   };
@@ -492,8 +492,7 @@ export function applyNiceAxisRange(
 
       const axisValues = valueByIndex?.get(index) ?? allValues;
       if (axisValues.length === 0) return;
-      const dataMin = Math.min(...axisValues);
-      const dataMax = Math.max(...axisValues);
+      const { min: dataMin, max: dataMax } = valueExtent(axisValues);
 
       const desiredTicks = densityLimitedDesiredTicks(
         ax,
@@ -504,28 +503,31 @@ export function applyNiceAxisRange(
         labelSpacingFactor,
       );
       const zoomed =
-        stackGroups.size === 0 && ax.min === undefined && ax.max === undefined
+        stackGroups.size === 0 &&
+        ax.min === undefined &&
+        ax.max === undefined &&
+        ax.interval === undefined
           ? zoomedAxisExtent(dataMax, dataMin, desiredTicks)
           : undefined;
       if (zoomed) {
         ax.min = zoomed.min;
         ax.max = zoomed.max;
-        if (ax.interval === undefined) ax.interval = zoomed.interval;
+        ax.interval = zoomed.interval;
         return;
       }
-      const interval = niceAxisInterval(dataMax, dataMin, desiredTicks);
+      const allZero = dataMax === 0 && dataMin === 0;
+      const top = allZero ? 1 : Math.max(0, dataMax);
+      const interval: number = ax.interval ?? niceAxisInterval(top, dataMin, desiredTicks);
 
       if (ax.max === undefined) {
-        let max = niceAxisMax(dataMax, dataMin, desiredTicks);
-        if (desiredTicks > 1 && max > dataMax && max - dataMax < interval * 0.25) {
-          max += interval;
-        }
-        ax.max = max;
+        if (allZero) ax.max = 1;
+        else if (dataMax <= 0) ax.max = 0;
+        else ax.max = axisMaxAbove(dataMax, interval, desiredTicks > 1);
       }
       if (ax.min === undefined && dataMin >= 0) {
         ax.min = 0;
       } else if (ax.min === undefined && dataMin < 0) {
-        ax.min = niceAxisMin(dataMax, dataMin, desiredTicks);
+        ax.min = -axisMaxAbove(-dataMin, interval, false);
       }
       if (ax.interval === undefined) {
         ax.interval = interval;
@@ -537,16 +539,27 @@ export function applyNiceAxisRange(
   processAxis(opt.yAxis, 'y', valuesByYAxis);
 }
 
-export function niceAxisMax(dataMax: number, dataMin: number, desiredTicks = 5): number {
-  const niceInterval = niceAxisInterval(dataMax, dataMin, desiredTicks);
-  const niceMax = Math.ceil(dataMax / niceInterval) * niceInterval;
-  return niceMax <= dataMax ? niceMax + niceInterval : niceMax;
+export const OFFICE_VALUE_AXIS_TICKS = 9;
+
+export function valueExtent(values: readonly number[]): { min: number; max: number } {
+  let min = Infinity;
+  let max = -Infinity;
+  for (const v of values) {
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  return { min, max };
 }
 
-function niceAxisMin(dataMax: number, dataMin: number, desiredTicks = 5): number {
-  const niceInterval = niceAxisInterval(dataMax, dataMin, desiredTicks);
-  const niceMin = Math.floor(dataMin / niceInterval) * niceInterval;
-  return niceMin >= dataMin ? niceMin - niceInterval : niceMin;
+export function axisMaxAbove(dataMax: number, interval: number, headroom: boolean): number {
+  let max = Math.ceil(dataMax / interval) * interval;
+  if (max <= dataMax) max += interval;
+  if (headroom && max - dataMax < interval * 0.25) max += interval;
+  return max;
+}
+
+export function niceAxisMax(dataMax: number, dataMin: number, desiredTicks = 5): number {
+  return axisMaxAbove(dataMax, niceAxisInterval(dataMax, dataMin, desiredTicks), false);
 }
 
 export function niceAxisInterval(dataMax: number, dataMin: number, desiredTicks = 5): number {

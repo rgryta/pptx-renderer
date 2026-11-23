@@ -55,4 +55,25 @@ describe('chart axis helpers', () => {
     const formatter = (axisDef.axisLabel as { formatter: (value: number) => string }).formatter;
     expect(formatter(0.125)).toBe('12.5%');
   });
+
+  it('applies an explicit c:majorUnit as the value-axis interval', () => {
+    const plotArea = parseXml(`
+      <c:plotArea xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart">
+        <c:barChart><c:axId val="cat1"/><c:axId val="val1"/></c:barChart>
+        <c:catAx><c:axId val="cat1"/></c:catAx>
+        <c:valAx><c:axId val="val1"/><c:scaling/><c:majorUnit val="0.25"/></c:valAx>
+      </c:plotArea>
+    `);
+
+    const { valueAxis } = parseAxes(
+      plotArea,
+      createMockRenderContext(),
+      plotArea.child('barChart'),
+    );
+    const axisDef: Record<string, unknown> = {};
+    applyAxisInfo(axisDef, valueAxis, 'value');
+
+    expect(valueAxis.majorUnit).toBe(0.25);
+    expect(axisDef.interval).toBe(0.25);
+  });
 });

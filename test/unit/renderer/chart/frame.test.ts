@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { extractBackgroundColors, extractChartFrameStyle } from '../../../../src/renderer/chart/frame';
+import {
+  extractBackgroundColors,
+  extractChartFrameStyle,
+} from '../../../../src/renderer/chart/frame';
 import { parseXml } from '../../../../src/parser/XmlParser';
 import { createMockRenderContext } from '../../helpers/mockContext';
 
@@ -15,10 +18,12 @@ describe('chart frame helpers', () => {
       </c:chartSpace>
     `);
 
-    expect(extractBackgroundColors(chart, chart.child('chart'), createMockRenderContext())).toEqual({
-      chartBg: '#FFFFFF',
-      plotAreaBg: '#EEEEEE',
-    });
+    expect(extractBackgroundColors(chart, chart.child('chart'), createMockRenderContext())).toEqual(
+      {
+        chartBg: '#FFFFFF',
+        plotAreaBg: '#EEEEEE',
+      },
+    );
   });
 
   it('extracts chart frame outline style', () => {

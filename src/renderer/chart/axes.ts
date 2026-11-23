@@ -108,6 +108,7 @@ function parseAxisNode(ax: SafeXmlNode, ctx: RenderContext): AxisInfo {
   const maxNode = scaling.child('max');
   const min = minNode.exists() ? parseFloat(minNode.attr('val') || '') : undefined;
   const max = maxNode.exists() ? parseFloat(maxNode.attr('val') || '') : undefined;
+  const majorUnit = parseFloat(ax.child('majorUnit').attr('val') || '');
   const hasMajorGridlines = ax.child('majorGridlines').exists();
   const majorTickMark = ax.child('majorTickMark').attr('val');
   const orientation = scaling.child('orientation').attr('val') || 'minMax';
@@ -132,6 +133,7 @@ function parseAxisNode(ax: SafeXmlNode, ctx: RenderContext): AxisInfo {
     numFmt: numFmt && numFmt !== 'General' ? numFmt : undefined,
     min: min !== undefined && !isNaN(min) ? min : undefined,
     max: max !== undefined && !isNaN(max) ? max : undefined,
+    majorUnit: majorUnit > 0 && Number.isFinite(majorUnit) ? majorUnit : undefined,
     hasMajorGridlines,
     majorTickMark,
     orientation,
@@ -274,6 +276,7 @@ export function applyAxisInfo(
   if (kind === 'value') {
     if (info.min !== undefined) axisDef.min = info.min;
     if (info.max !== undefined) axisDef.max = info.max;
+    if (info.majorUnit !== undefined) axisDef.interval = info.majorUnit;
   }
 
   if (kind === 'value' && !info.deleted && info.tickLblPos !== 'none') {
