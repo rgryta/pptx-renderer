@@ -40,6 +40,14 @@ const renderFit = (
         .filter((s) => s.textContent?.trim())
         .map((s) => s.getBoundingClientRect());
       return {
+        columnTop:
+          container.firstElementChild!.getBoundingClientRect().top -
+          parseFloat(getComputedStyle(container.firstElementChild!).marginTop) -
+          box.top,
+        columnBottom:
+          box.bottom -
+          container.lastElementChild!.getBoundingClientRect().bottom -
+          parseFloat(getComputedStyle(container.lastElementChild!).marginBottom),
         fontSize: getComputedStyle(span).fontSize,
         transform: container.style.transform,
         overflowY: getComputedStyle(container).overflowY,
@@ -123,7 +131,7 @@ test('stale stored fontScale that overflows at every font scale keeps the stored
   expect(result).toMatchObject({ fontSize: '6.33333px', transform: '', overflowY: 'visible' });
 });
 
-test('stale stored fontScale ignores trailing empty paragraphs when fitting visible text', async ({
+test('stale stored fontScale fits the visible text and centres the body with its trailing empty paragraphs', async ({
   page,
 }) => {
   await page.goto('/test/browser/blank.html');
@@ -143,8 +151,31 @@ test('stale stored fontScale ignores trailing empty paragraphs when fitting visi
   );
   const scale = Number(/^scale\(([\d.]+)\)$/.exec(result.transform)?.[1] ?? 1);
   expect(parseFloat(result.fontSize) * scale).toBeGreaterThanOrEqual(2 * 0.25 * (1900 / 75));
-  expect(result.overflow).toBeLessThanOrEqual(1);
-  expect(result.underflow).toBeLessThanOrEqual(1);
+  expect(result.overflowY).toBe('visible');
+  expect(result.columnTop).toBeLessThan(0);
+  expect(Math.abs(result.columnTop - result.columnBottom)).toBeLessThanOrEqual(1);
+});
+
+test('normAutofit line reduction without a stored scale keeps blank lines from shrinking the text', async ({
+  page,
+}) => {
+  await page.goto('/test/browser/blank.html');
+  const lines = [
+    ...paragraphs(4, 1000).split('</a:p><a:p>'),
+    ...Array.from({ length: 12 }, () => '<a:endParaRPr sz="1900"/>'),
+  ];
+  const result = await renderFit(
+    page,
+    '<a:normAutofit lnSpcReduction="10000"/>',
+    lines.join('</a:p><a:p>'),
+    200,
+    '',
+    288,
+    ' anchor="b"',
+  );
+  expect(result).toMatchObject({ fontSize: '13.3333px', transform: '', overflowY: 'visible' });
+  expect(result.columnBottom).toBeGreaterThanOrEqual(0);
+  expect(result.underflow).toBeGreaterThan(0);
 });
 
 type Box = {
@@ -194,6 +225,14 @@ const renderBoxes = (page: import('@playwright/test').Page, boxes: Box[]) =>
       const lines = spans.flatMap((span) => [...span.getClientRects()]);
       return {
         fontSize: parseFloat(getComputedStyle(spans[0]).fontSize),
+        columnTop:
+          container.firstElementChild!.getBoundingClientRect().top -
+          parseFloat(getComputedStyle(container.firstElementChild!).marginTop) -
+          box.top,
+        columnBottom:
+          box.bottom -
+          container.lastElementChild!.getBoundingClientRect().bottom -
+          parseFloat(getComputedStyle(container.lastElementChild!).marginBottom),
         lineHeight: spans[0].closest('div')!.style.lineHeight,
         clippedLines:
           getComputedStyle(container).overflowY === 'visible'
@@ -224,6 +263,7 @@ const stalePlaceholderBoxes = (
   empties: number,
   list = '',
   leadingEmpties = 0,
+  anchor = 'ctr',
 ) => {
   const runs = [
     ...Array.from({ length: leadingEmpties }, () => '<a:endParaRPr sz="1900"/>'),
@@ -231,8 +271,7 @@ const stalePlaceholderBoxes = (
     '<a:endParaRPr sz="6400"/>',
     ...Array.from({ length: empties }, () => '<a:endParaRPr sz="1900"/>'),
   ].join('</a:p><a:p>');
-  const body =
-    '<a:bodyPr vert="horz" wrap="square" anchor="ctr"><a:normAutofit fontScale="25000" lnSpcReduction="20000"/></a:bodyPr>';
+  const body = `<a:bodyPr vert="horz" wrap="square" anchor="${anchor}"><a:normAutofit fontScale="25000" lnSpcReduction="20000"/></a:bodyPr>`;
   return [false, false, true].map((flipH) => ({
     body,
     runs,
@@ -246,7 +285,7 @@ const stalePlaceholderBoxes = (
 
 const heading = 'Alpha 13 issued total (From 01/04-2025 until 01/09 - 2026):';
 
-test('stale stored fontScale boxes side by side wrap at their own width and stay inside', async ({
+test('stale stored fontScale boxes side by side wrap at their own width and centre with their empty tail', async ({
   page,
 }) => {
   await page.goto('/test/browser/blank.html');
@@ -257,59 +296,77 @@ test('stale stored fontScale boxes side by side wrap at their own width and stay
     expect(result.fontSize).toBeGreaterThanOrEqual(0.6 * (1900 / 75));
     expect(result.firstLineChars).toBeGreaterThanOrEqual(2);
     expect(result.leftToRight).toBe(true);
-    expect(result.firstLineTop).toBeGreaterThanOrEqual(0);
-    expect(result.lastLineBottom).toBeGreaterThanOrEqual(0);
-    expect(result.outside).toBeLessThanOrEqual(1);
+    expect(result.clippedLines).toBe(0);
+    expect(result.columnTop).toBeLessThan(0);
+    expect(Math.abs(result.columnTop - result.columnBottom)).toBeLessThanOrEqual(1);
+    expect(Math.abs(result.firstLineTop - results[0].firstLineTop)).toBeLessThanOrEqual(1);
   }
 });
 
-test('stale stored fontScale boxes keep visible text inside when the empty tail overflows', async ({
+const emptyTailList =
+  '<a:lvl1pPr><a:lnSpc><a:spcPct val="90000"/></a:lnSpc><a:spcBef><a:spcPts val="1000"/></a:spcBef></a:lvl1pPr>';
+
+test('stale stored fontScale boxes with an overflowing empty tail anchor at the top and spill down', async ({
   page,
 }) => {
   await page.goto('/test/browser/blank.html');
   const results = await renderBoxes(
     page,
-    stalePlaceholderBoxes(
-      1600,
-      [heading, 'Issued in total : 103', 'Completed : 47'],
-      25,
-      '<a:lvl1pPr><a:lnSpc><a:spcPct val="90000"/></a:lnSpc><a:spcBef><a:spcPts val="1000"/></a:spcBef></a:lvl1pPr>',
-    ),
+    stalePlaceholderBoxes(1600, [heading, 'Completed : 47'], 25, emptyTailList, 0, 't'),
   );
   for (const result of results) {
     expect(result.transform).not.toContain('scale(');
-    expect(result.fontSize).toBeGreaterThanOrEqual(0.6 * (1600 / 75));
     expect(result.leftToRight).toBe(true);
+    expect(result.clippedLines).toBe(0);
     expect(result.firstLineTop).toBeGreaterThanOrEqual(0);
-    expect(result.lastLineBottom).toBeGreaterThanOrEqual(0);
-    expect(result.outside).toBeLessThanOrEqual(1);
-    expect(result.contentOverflow).toBeLessThanOrEqual(0);
     expect(result.firstLineTop).toBeLessThanOrEqual(4.8 + 2);
+    expect(result.columnBottom).toBeLessThan(0);
   }
 });
 
-test('stale stored fontScale boxes drop overflowing leading empty paragraphs and start at the top', async ({
+test('stale stored fontScale boxes with an overflowing empty tail anchor at the bottom and spill up', async ({
   page,
 }) => {
   await page.goto('/test/browser/blank.html');
   const results = await renderBoxes(
     page,
-    stalePlaceholderBoxes(
-      1600,
-      [heading, 'Issued in total : 103', 'Completed : 47', 'Open : 56', 'Overdue : 3', 'Next'],
-      11,
-      '<a:lvl1pPr><a:lnSpc><a:spcPct val="90000"/></a:lnSpc><a:spcBef><a:spcPts val="1000"/></a:spcBef></a:lvl1pPr>',
-      11,
-    ),
+    stalePlaceholderBoxes(1600, [heading, 'Completed : 47'], 25, emptyTailList, 0, 'b'),
   );
   for (const result of results) {
     expect(result.transform).not.toContain('scale(');
     expect(result.leftToRight).toBe(true);
-    expect(result.firstLineTop).toBeGreaterThanOrEqual(0);
-    expect(result.firstLineTop).toBeLessThanOrEqual(4.8 + 2);
-    expect(result.lastLineBottom).toBeGreaterThanOrEqual(0);
-    expect(result.outside).toBeLessThanOrEqual(1);
+    expect(result.clippedLines).toBe(0);
+    expect(result.columnBottom).toBeGreaterThanOrEqual(0);
+    expect(result.columnBottom).toBeLessThanOrEqual(4.8 + 1);
+    expect(result.firstLineTop).toBeLessThan(0);
   }
+});
+
+test('stale stored fontScale boxes keep overflowing edge empty paragraphs and centre their text by anchor', async ({
+  page,
+}) => {
+  await page.goto('/test/browser/blank.html');
+  const [tall, short, flipped] = stalePlaceholderBoxes(
+    1600,
+    [heading, 'Issued in total : 103', 'Completed : 47'],
+    11,
+    emptyTailList,
+    11,
+  );
+  const results = await renderBoxes(page, [
+    tall,
+    { ...short, height: 139, top: 214 },
+    { ...flipped, height: 159, top: 204 },
+  ]);
+  for (const result of results) {
+    expect(result.transform).not.toContain('scale(');
+    expect(result.leftToRight).toBe(true);
+    expect(result.clippedLines).toBe(0);
+    expect(result.columnTop).toBeLessThan(0);
+    expect(Math.abs(result.columnTop - result.columnBottom)).toBeLessThanOrEqual(1);
+  }
+  const firstLineY = results.map((result, index) => result.firstLineTop + [194, 214, 204][index]);
+  expect(Math.max(...firstLineY) - Math.min(...firstLineY)).toBeLessThanOrEqual(1);
 });
 
 test('stale stored fontScale boxes that overflow at every scale keep stored line spacing and clip no line', async ({

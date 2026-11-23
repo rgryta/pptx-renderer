@@ -3332,9 +3332,8 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
         const baseSvgPreserveAspectRatio = mainSvg?.getAttribute('preserveAspectRatio') ?? null;
         const usesVisibleTextHeight = hasNormAutofit && !isVerticalText;
         const baseJustifyContent = textContainer.style.justifyContent;
-        // Empty paragraphs at either edge leave layout when the whole body overflows, so the fit
-        // and the placement follow the visible text; trailing ones go first.
-        const fitEdgeEmptyParagraphs = (heightTolerance = 1) => {
+        // Edge empty paragraphs leave the fit measurement of an overflowing body; the render keeps them.
+        const hideEdgeEmptyParagraphs = (heightTolerance = 1): HTMLElement[] => {
           const paragraphs = Array.from(textContainer.children) as HTMLElement[];
           const isEmpty = (paragraph: HTMLElement) =>
             !paragraph.textContent?.trim() && !paragraph.querySelector('img, svg');
@@ -3342,16 +3341,17 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
           let end = paragraphs.length;
           while (start < end && isEmpty(paragraphs[start])) start++;
           while (end > start && isEmpty(paragraphs[end - 1])) end--;
-          if (start === end) return false;
+          if (start === end) return [];
           const leading = paragraphs.slice(0, start);
           const trailing = paragraphs.slice(end);
           for (const paragraph of [...leading, ...trailing]) paragraph.style.display = '';
           const overflows = () =>
             textContainer.scrollHeight > textContainer.clientHeight * heightTolerance;
-          if (leading.length + trailing.length === 0 || !overflows()) return false;
+          if (leading.length + trailing.length === 0 || !overflows()) return [];
           for (const paragraph of trailing) paragraph.style.display = 'none';
-          if (overflows()) for (const paragraph of leading) paragraph.style.display = 'none';
-          return true;
+          if (!overflows()) return trailing;
+          for (const paragraph of leading) paragraph.style.display = 'none';
+          return [...leading, ...trailing];
         };
         const applyDynamicAutofit = () => {
           wrapper.style.width = baseWrapperWidth;
@@ -3404,7 +3404,7 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
               textContainer.style.lineHeight = lineHeight;
             };
             const fits = () => {
-              fitEdgeEmptyParagraphs();
+              hideEdgeEmptyParagraphs();
               return (
                 textContainer.clientHeight > 0 &&
                 textContainer.scrollHeight <= textContainer.clientHeight &&
@@ -3437,9 +3437,11 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
             keepsOverflowingStoredScale = largestFit === 0;
             useFontScale(fittedByFontScale ? largestFit : storedFontScale);
           }
-          const edgeEmptiesHidden =
-            usesVisibleTextHeight &&
-            fitEdgeEmptyParagraphs(toleratesMetricOverflow ? WRAPPED_AUTOFIT_HEIGHT_TOLERANCE : 1);
+          const hiddenEdgeEmpties = usesVisibleTextHeight
+            ? hideEdgeEmptyParagraphs(
+                toleratesMetricOverflow ? WRAPPED_AUTOFIT_HEIGHT_TOLERANCE : 1,
+              )
+            : [];
           const containerW = textContainer.clientWidth;
           const containerH = textContainer.clientHeight;
           const wrappedContentH = textContainer.scrollHeight;
@@ -3496,6 +3498,7 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
             measuredUnwrappedWidth = true;
             textContainer.style.whiteSpace = savedWhiteSpace;
           }
+          for (const paragraph of hiddenEdgeEmpties) paragraph.style.display = '';
           textContainer.style.justifyContent = savedJC;
           if (!wasConnected) {
             if (wrapper.parentNode === measurementRoot) {
@@ -3627,17 +3630,6 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
             scale = containerH / wrappedContentH;
           }
           if (fittedByFontScale || keepsOverflowingStoredScale) scale = 1;
-          if (edgeEmptiesHidden) {
-            textContainer.style.justifyContent = 'flex-start';
-          } else if (
-            usesVisibleTextHeight &&
-            containerH > 0 &&
-            (textContainer.style.justifyContent === 'center' ||
-              textContainer.style.justifyContent === 'flex-end')
-          ) {
-            // Visible text that still overflows must not be pushed above the box.
-            textContainer.style.justifyContent = `safe ${textContainer.style.justifyContent}`;
-          }
           if (scale < 1) {
             if (!textContainer.style.transform) {
               textContainer.style.transformOrigin = 'top left';
@@ -3649,10 +3641,13 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
             appendTransform(textContainer, `scale(${scale})`);
             textContainer.style.width = expandCssLengthForScale(baseWidth, scale);
             textContainer.style.height = expandCssLengthForScale(baseHeight, scale);
-          } else if (
-            hasToleratedVerticalMetricOverhang ||
-            hasIgnoredImplicitSingleLineVerticalOverflow ||
-            keepsOverflowingStoredScale
+          }
+          if (
+            hiddenEdgeEmpties.length > 0 ||
+            (scale >= 1 &&
+              (hasToleratedVerticalMetricOverhang ||
+                hasIgnoredImplicitSingleLineVerticalOverflow ||
+                keepsOverflowingStoredScale))
           ) {
             // Pair visible vertical overflow with clip rather than hidden on the
             // other axis. CSS otherwise computes hidden/visible as hidden/auto,
