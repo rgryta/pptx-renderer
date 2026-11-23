@@ -10,6 +10,7 @@ import {
   DEFAULT_CHART_FOREGROUND_COLOR,
   DEFAULT_MAJOR_GRIDLINE_STYLE,
   type AxisInfo,
+  type CategoryGroup,
   markExplicitFontSize,
   type ChartLineStyle,
 } from './types';
@@ -122,6 +123,8 @@ function parseAxisNode(ax: SafeXmlNode, ctx: RenderContext): AxisInfo {
         : undefined))
     : undefined;
   const axisTitle = extractAxisTitle(ax, ctx);
+  const noMultiLvlLbl =
+    ax.localName === 'dateAx' || parseOoxmlBoolElement(ax.child('noMultiLvlLbl'));
   return {
     deleted,
     tickLblPos,
@@ -137,6 +140,7 @@ function parseAxisNode(ax: SafeXmlNode, ctx: RenderContext): AxisInfo {
     labelFontSize,
     lineColor,
     majorGridlineStyle,
+    ...(noMultiLvlLbl ? { noMultiLvlLbl } : {}),
   };
 }
 
@@ -343,4 +347,57 @@ export function applyAxisInfo(
       };
     }
   }
+}
+
+/** Slots at every half leaf step, so each unequal span's centre and boundaries land on a slot. */
+export function buildCategoryGroupAxis(
+  leafAxis: Record<string, unknown>,
+  info: AxisInfo,
+  levels: CategoryGroup[][] | undefined,
+  leafCount: number,
+): Record<string, unknown> | undefined {
+  const groups = levels?.[levels.length - 1];
+  if (!groups || info.noMultiLvlLbl || info.deleted || info.tickLblPos === 'none') return undefined;
+  if (leafCount === 0) return undefined;
+
+  const shift = leafAxis.boundaryGap === false ? 1 : 0;
+  const data: string[] = new Array(Math.max(1, 2 * leafCount + 1 - 2 * shift)).fill('');
+  const last = data.length - 1;
+  const ticks = new Set([0, last]);
+  for (const g of groups) {
+    data[Math.min(last, g.start + g.end - shift)] = g.label;
+    ticks.add(Math.max(0, 2 * g.start - shift));
+    ticks.add(Math.min(last, 2 * g.end - shift));
+  }
+
+  const leafLabel = (leafAxis.axisLabel as Record<string, unknown>) ?? {};
+  const leafTick = (leafAxis.axisTick as Record<string, unknown>) ?? {};
+  const rowPx = Math.round(
+    ((leafLabel.fontSize as number) ?? DEFAULT_CHART_AXIS_LABEL_FONT_SIZE) * 1.2,
+  );
+  if (typeof leafAxis.nameGap === 'number') leafAxis.nameGap += rowPx;
+
+  return {
+    type: 'category',
+    position: 'bottom',
+    data,
+    boundaryGap: false,
+    ...(leafAxis.inverse ? { inverse: true } : {}),
+    axisLine: { show: false },
+    axisPointer: { show: false },
+    splitLine: { show: false },
+    axisTick: {
+      show: leafTick.show !== false,
+      interval: (index: number) => ticks.has(index),
+      length: 8 + 2 * rowPx,
+      lineStyle: leafTick.lineStyle,
+    },
+    axisLabel: {
+      ...leafLabel,
+      interval: 0,
+      rotate: 0,
+      // A leading blank line drops the group row one leaf row below the axis.
+      formatter: (value: string) => (value ? `\n${value}` : ''),
+    },
+  };
 }

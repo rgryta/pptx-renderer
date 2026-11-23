@@ -1,4 +1,5 @@
 import { SafeXmlNode } from '../../parser/XmlParser';
+import type { CategoryGroup } from './types';
 
 const MAX_CHART_CACHE_POINTS = 10_000;
 
@@ -50,17 +51,47 @@ function resolveDataCache(refNode: SafeXmlNode, kind: 'str' | 'num'): SafeXmlNod
   );
 }
 
-/** The first `lvl` of a multi-level category cache holds the leaf labels, one per data point. */
-function resolveMultiLevelLeaf(refNode: SafeXmlNode): { leaf: SafeXmlNode; cache: SafeXmlNode } {
+const hasPoints = (lvl: SafeXmlNode) => lvl.children('pt').length > 0;
+
+/** The first populated `lvl` holds the leaf labels; later levels hold the outer group labels. */
+function resolveMultiLevelLeaf(refNode: SafeXmlNode): {
+  leaf: SafeXmlNode;
+  cache: SafeXmlNode;
+  outer: SafeXmlNode[];
+} {
   const candidates = [
     refNode.child('multiLvlStrRef').child('multiLvlStrCache'),
     refNode.child('multiLvlStrCache'),
   ];
   const cache =
-    candidates.find((c) => c.child('lvl').children('pt').length > 0) ??
+    candidates.find((c) => c.children('lvl').some(hasPoints)) ??
     candidates.find((c) => c.exists()) ??
     candidates[0];
-  return { leaf: cache.child('lvl'), cache };
+  const levels = cache.children('lvl');
+  const leafIndex = levels.findIndex(hasPoints);
+  return leafIndex < 0
+    ? { leaf: cache.child('lvl'), cache, outer: [] }
+    : { leaf: levels[leafIndex], cache, outer: levels.slice(leafIndex + 1) };
+}
+
+/** Outer category levels, leaf upward; each `pt idx` marks where its group starts. */
+export function extractCategoryLevels(refNode: SafeXmlNode): CategoryGroup[][] {
+  const { leaf, cache, outer } = resolveMultiLevelLeaf(refNode);
+  const pointCount = getCachePointLimit(leaf, cache);
+  return outer
+    .map((lvl) => {
+      const starts = lvl
+        .children('pt')
+        .map((pt) => ({ label: pt.child('v').text(), start: pt.numAttr('idx') }))
+        .filter((g): g is { label: string; start: number } =>
+          isCachePointInRange(g.start, pointCount),
+        )
+        .sort((a, b) => a.start - b.start);
+      return starts
+        .map((g, i) => ({ ...g, end: starts[i + 1]?.start ?? pointCount }))
+        .filter((g) => g.end > g.start);
+    })
+    .filter((groups) => groups.length > 0);
 }
 
 function readStringPoints(points: SafeXmlNode, countSource: SafeXmlNode = points): string[] {
