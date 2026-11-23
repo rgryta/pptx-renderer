@@ -3312,28 +3312,26 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
         const baseSvgHeight = mainSvg?.getAttribute('height') ?? null;
         const baseSvgPreserveAspectRatio = mainSvg?.getAttribute('preserveAspectRatio') ?? null;
         const usesVisibleTextHeight = hasNormAutofit && !isVerticalText;
-        const trailingEmptyParagraphs = () => {
+        const baseJustifyContent = textContainer.style.justifyContent;
+        // Empty paragraphs at either edge leave layout when the whole body overflows, so the fit
+        // and the placement follow the visible text; trailing ones go first.
+        const fitEdgeEmptyParagraphs = () => {
           const paragraphs = Array.from(textContainer.children) as HTMLElement[];
+          const isEmpty = (paragraph: HTMLElement) =>
+            !paragraph.textContent?.trim() && !paragraph.querySelector('img, svg');
+          let start = 0;
           let end = paragraphs.length;
-          while (
-            end > 0 &&
-            !paragraphs[end - 1].textContent?.trim() &&
-            !paragraphs[end - 1].querySelector('img, svg')
-          ) {
-            end--;
-          }
-          return end > 0 ? paragraphs.slice(end) : [];
-        };
-        // Trailing empty paragraphs may overflow unseen, so the fit ends at the last visible text.
-        const measureContentHeight = () => {
-          const lastVisible = usesVisibleTextHeight
-            ? (trailingEmptyParagraphs()[0]?.previousElementSibling as HTMLElement | null)
-            : null;
-          return lastVisible
-            ? lastVisible.offsetTop +
-                lastVisible.offsetHeight +
-                (parseFloat(textContainer.style.paddingBottom) || 0)
-            : textContainer.scrollHeight;
+          while (start < end && isEmpty(paragraphs[start])) start++;
+          while (end > start && isEmpty(paragraphs[end - 1])) end--;
+          if (start === end) return false;
+          const leading = paragraphs.slice(0, start);
+          const trailing = paragraphs.slice(end);
+          for (const paragraph of [...leading, ...trailing]) paragraph.style.display = '';
+          const overflows = () => textContainer.scrollHeight > textContainer.clientHeight;
+          if (leading.length + trailing.length === 0 || !overflows()) return false;
+          for (const paragraph of trailing) paragraph.style.display = 'none';
+          if (overflows()) for (const paragraph of leading) paragraph.style.display = 'none';
+          return true;
         };
         const applyDynamicAutofit = () => {
           wrapper.style.width = baseWrapperWidth;
@@ -3345,6 +3343,7 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
           textContainer.style.height = baseHeight;
           textContainer.style.whiteSpace = baseWhiteSpace;
           textContainer.style.overflowY = baseOverflowY;
+          textContainer.style.justifyContent = baseJustifyContent;
           if (mainSvg) {
             if (baseSvgWidth === null) mainSvg.removeAttribute('width');
             else mainSvg.setAttribute('width', baseSvgWidth);
@@ -3383,11 +3382,15 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
               textContainer.replaceChildren(...nodes);
               textContainer.style.lineHeight = lineHeight;
             };
-            const fits = () =>
-              textContainer.clientHeight > 0 &&
-              measureContentHeight() <= textContainer.clientHeight &&
-              textContainer.scrollWidth <=
-                textContainer.clientWidth + WRAPPED_AUTOFIT_WIDTH_TOLERANCE_PX;
+            const fits = () => {
+              fitEdgeEmptyParagraphs();
+              return (
+                textContainer.clientHeight > 0 &&
+                textContainer.scrollHeight <= textContainer.clientHeight &&
+                textContainer.scrollWidth <=
+                  textContainer.clientWidth + WRAPPED_AUTOFIT_WIDTH_TOLERANCE_PX
+              );
+            };
             const fitsAtFontScale = (fontScale: number) => {
               useNodes(nodesAtFontScale(fontScale), '');
               return fits();
@@ -3413,16 +3416,10 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
               fittedByFontScale = true;
             }
           }
-          if (usesVisibleTextHeight) {
-            const trailing = trailingEmptyParagraphs();
-            for (const paragraph of trailing) paragraph.style.display = '';
-            // Overflowing empty tails leave layout so the anchor places the visible text in the box.
-            const hideTrailing = textContainer.scrollHeight > textContainer.clientHeight;
-            for (const paragraph of trailing) paragraph.style.display = hideTrailing ? 'none' : '';
-          }
+          const edgeEmptiesHidden = usesVisibleTextHeight && fitEdgeEmptyParagraphs();
           const containerW = textContainer.clientWidth;
           const containerH = textContainer.clientHeight;
-          const wrappedContentH = measureContentHeight();
+          const wrappedContentH = textContainer.scrollHeight;
           const wrappedContentW = textContainer.scrollWidth;
           let contentW = wrappedContentW;
           let contentH = wrappedContentH;
@@ -3608,13 +3605,15 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
             scale = containerH / wrappedContentH;
           }
           if (fittedByFontScale) scale = 1;
-          if (
+          if (edgeEmptiesHidden) {
+            textContainer.style.justifyContent = 'flex-start';
+          } else if (
             usesVisibleTextHeight &&
             containerH > 0 &&
             (textContainer.style.justifyContent === 'center' ||
               textContainer.style.justifyContent === 'flex-end')
           ) {
-            // Overflowing trailing empty paragraphs must not push visible text above the box.
+            // Visible text that still overflows must not be pushed above the box.
             textContainer.style.justifyContent = `safe ${textContainer.style.justifyContent}`;
           }
           if (scale < 1) {

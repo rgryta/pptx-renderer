@@ -193,8 +193,15 @@ const renderBoxes = (page: import('@playwright/test').Page, boxes: Box[]) =>
     });
   }, boxes);
 
-const stalePlaceholderBoxes = (size: number, texts: string[], empties: number, list = '') => {
+const stalePlaceholderBoxes = (
+  size: number,
+  texts: string[],
+  empties: number,
+  list = '',
+  leadingEmpties = 0,
+) => {
   const runs = [
+    ...Array.from({ length: leadingEmpties }, () => '<a:endParaRPr sz="1900"/>'),
     ...texts.map((text) => `<a:r><a:rPr sz="${size}"/><a:t>${text}</a:t></a:r>`),
     '<a:endParaRPr sz="6400"/>',
     ...Array.from({ length: empties }, () => '<a:endParaRPr sz="1900"/>'),
@@ -252,6 +259,31 @@ test('stale stored fontScale boxes keep visible text inside when the empty tail 
     expect(result.lastLineBottom).toBeGreaterThanOrEqual(0);
     expect(result.outside).toBeLessThanOrEqual(1);
     expect(result.contentOverflow).toBeLessThanOrEqual(0);
+    expect(result.firstLineTop).toBeLessThanOrEqual(4.8 + 2);
+  }
+});
+
+test('stale stored fontScale boxes drop overflowing leading empty paragraphs and start at the top', async ({
+  page,
+}) => {
+  await page.goto('/test/browser/blank.html');
+  const results = await renderBoxes(
+    page,
+    stalePlaceholderBoxes(
+      1600,
+      [heading, 'Issued in total : 103', 'Completed : 47', 'Open : 56', 'Overdue : 3', 'Next'],
+      11,
+      '<a:lvl1pPr><a:lnSpc><a:spcPct val="90000"/></a:lnSpc><a:spcBef><a:spcPts val="1000"/></a:spcBef></a:lvl1pPr>',
+      11,
+    ),
+  );
+  for (const result of results) {
+    expect(result.transform).not.toContain('scale(');
+    expect(result.leftToRight).toBe(true);
+    expect(result.firstLineTop).toBeGreaterThanOrEqual(0);
+    expect(result.firstLineTop).toBeLessThanOrEqual(4.8 + 2);
+    expect(result.lastLineBottom).toBeGreaterThanOrEqual(0);
+    expect(result.outside).toBeLessThanOrEqual(1);
   }
 });
 
