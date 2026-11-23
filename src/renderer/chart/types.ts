@@ -135,7 +135,9 @@ export function hasExplicitFontSize(style: unknown): boolean {
 }
 
 export interface MutableAxisOption {
+  id?: string;
   type?: string;
+  offset?: number;
   min?: number;
   max?: number;
   interval?: number;

@@ -11,9 +11,11 @@ import { hexToRgb, hslToRgb, rgbToHex, rgbToHsl } from '../utils/color';
 import {
   applyAxisInfo,
   buildCategoryGroupAxis,
+  CATEGORY_GROUP_AXIS_ID,
   getChartAxisIds,
   parseAxes,
   parseScatterAxes,
+  sizeCategoryGroupAxes,
 } from './chart/axes';
 import { formatValue } from './chart/format';
 import { markerSizeToPx } from './chart/style';
@@ -689,9 +691,12 @@ function applyAreaAxisRange(
   if (axisDef.min === undefined && dataMin >= 0) axisDef.min = 0;
   if (axisDef.interval === undefined) axisDef.interval = interval;
   if (axisDef.max === undefined) {
-    axisDef.max = stacked
-      ? Math.ceil(dataMax / interval) * interval + interval
-      : axisMaxAbove(dataMax, interval, true);
+    axisDef.max =
+      dataMax <= 0
+        ? 0
+        : stacked
+          ? Math.ceil(dataMax / interval) * interval + interval
+          : axisMaxAbove(dataMax, interval, true);
   }
 }
 
@@ -2635,9 +2640,13 @@ export function applyZeroCrossingAxisLabelLayout(
   const gridWidth = plotSpanPx(grid, chartSize.w, 'left', 'right');
   let horizontalCategoryApplied = false;
   xAxes.forEach((xAxis, index) => {
-    horizontalCategoryApplied =
-      applyCategoryLabelZeroOffset(xAxis, yAxes[index] ?? yAxes[0], gridHeight) ||
-      horizontalCategoryApplied;
+    if (!applyCategoryLabelZeroOffset(xAxis, yAxes[index] ?? yAxes[0], gridHeight)) return;
+    horizontalCategoryApplied = true;
+    const group = xAxes[index + 1];
+    if (group?.id !== CATEGORY_GROUP_AXIS_ID) return;
+    // Offset moves the group row's ticks and labels together; 8 is ECharts' default label margin.
+    group.offset = xAxis.axisLabel!.margin! - (group.axisLabel?.margin ?? 8);
+    group.z = xAxis.z;
   });
   yAxes.forEach((yAxis, index) => {
     // PowerPoint leaves roughly two label-font units between horizontal-bar
@@ -2785,6 +2794,7 @@ export function parseChartXml(
     if (defaultFs) {
       applyDefaultFontSizes(option, defaultFs);
     }
+    sizeCategoryGroupAxes(option.xAxis);
     if (defaultFontFamily) {
       applyDefaultFontFamily(option, defaultFontFamily);
     }

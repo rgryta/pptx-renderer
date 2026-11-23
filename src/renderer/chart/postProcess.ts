@@ -503,11 +503,8 @@ export function applyNiceAxisRange(
         labelSpacingFactor,
       );
       const zoomed =
-        stackGroups.size === 0 &&
-        ax.min === undefined &&
-        ax.max === undefined &&
-        ax.interval === undefined
-          ? zoomedAxisExtent(dataMax, dataMin, desiredTicks)
+        stackGroups.size === 0 && ax.min === undefined && ax.max === undefined
+          ? zoomedAxisExtent(dataMax, dataMin, desiredTicks, ax.interval)
           : undefined;
       if (zoomed) {
         ax.min = zoomed.min;
@@ -588,10 +585,11 @@ function zoomedAxisExtent(
   dataMax: number,
   dataMin: number,
   desiredTicks: number,
+  majorUnit?: number,
 ): { min: number; max: number; interval: number } | undefined {
   if (dataMin <= 0 || dataMin >= dataMax || dataMin < (dataMax * 5) / 6) return undefined;
   const span = dataMax - dataMin;
-  const interval = roundNiceInterval((span * 1.1) / desiredTicks);
+  const interval = majorUnit ?? roundNiceInterval((span * 1.1) / desiredTicks);
   let max = (Math.floor(dataMax / interval) + 1) * interval;
   if (max - dataMax < interval * 0.25) max += interval;
   return {

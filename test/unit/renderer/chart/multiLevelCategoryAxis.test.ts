@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { parseChartXml } from '../../../../src/renderer/ChartRenderer';
+import {
+  applyZeroCrossingAxisLabelLayout,
+  parseChartXml,
+} from '../../../../src/renderer/ChartRenderer';
 import { extractCategoryLevels, extractStringValues } from '../../../../src/renderer/chart/format';
 import { parseXml } from '../../../../src/parser/XmlParser';
 import { createMockRenderContext } from '../../helpers/mockContext';
@@ -8,8 +11,10 @@ type Axis = {
   data?: string[];
   inverse?: boolean;
   nameGap?: number;
-  axisLabel?: { formatter?: (v: string) => string };
-  axisTick?: { interval?: (i: number) => boolean };
+  offset?: number;
+  z?: number;
+  axisLabel?: { formatter?: (v: string) => string; margin?: number };
+  axisTick?: { interval?: (i: number) => boolean; length?: number };
 };
 
 const NS =
@@ -41,10 +46,14 @@ function chartXml(opts: {
   type?: 'bar' | 'line' | 'area';
   barDir?: 'col' | 'bar';
   catAxExtra?: string;
+  values?: number[];
+  chartSpaceExtra?: string;
 }) {
-  const { type = 'bar', barDir = 'col', catAxExtra = '' } = opts;
+  const { type = 'bar', barDir = 'col', catAxExtra = '', chartSpaceExtra = '' } = opts;
   const values = pts(
-    Object.fromEntries(Array.from({ length: opts.leafCount }, (_, i) => [i, i + 1])),
+    Object.fromEntries(
+      Array.from({ length: opts.leafCount }, (_, i) => [i, opts.values?.[i] ?? i + 1]),
+    ),
   );
   const tag = `${type}Chart`;
   return `<c:chartSpace ${NS}><c:chart><c:autoTitleDeleted val="1"/><c:plotArea>
@@ -57,7 +66,7 @@ function chartXml(opts: {
       <c:axPos val="b"/><c:tickLblPos val="nextTo"/>${catAxExtra}<c:crossAx val="2"/></c:catAx>
     <c:valAx><c:axId val="2"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/>
       <c:axPos val="l"/><c:crossAx val="1"/></c:valAx>
-  </c:plotArea></c:chart></c:chartSpace>`;
+  </c:plotArea></c:chart>${chartSpaceExtra}</c:chartSpace>`;
 }
 
 function parse(xml: string) {
@@ -136,6 +145,42 @@ describe('two-level category axis', () => {
 
     expect(group.inverse).toBe(true);
     expect(leaf.nameGap).toBeGreaterThan(28);
+  });
+
+  it('moves the group row and its ticks with leaf labels that follow the zero line', () => {
+    const option = parse(
+      chartXml({
+        cat: multiLevelCat(4, { 0: 'A', 2: 'B' }),
+        leafCount: 4,
+        values: [15, -8, 5, -3],
+        catAxExtra: '<c:crosses val="autoZero"/>',
+      }),
+    );
+    applyZeroCrossingAxisLabelLayout(option, { w: 400, h: 300 });
+    const [leaf, group] = option.xAxis as Axis[];
+
+    expect(leaf.axisLabel?.margin).toBeLessThan(-50);
+    expect(group.offset).toBe(leaf.axisLabel!.margin! - 8);
+    expect(group.z).toBe(leaf.z);
+  });
+
+  it('sizes the group row from the chart default font size', () => {
+    const title =
+      '<c:title><c:tx><c:rich><a:bodyPr/><a:p><a:r><a:t>Period</a:t></a:r></a:p></c:rich></c:tx></c:title>';
+    const option = parse(
+      chartXml({
+        cat: multiLevelCat(4, { 0: 'A', 2: 'B' }),
+        leafCount: 4,
+        catAxExtra: title,
+        chartSpaceExtra:
+          '<c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="1800"/></a:pPr></a:p></c:txPr>',
+      }),
+    );
+    const [leaf, group] = option.xAxis as Axis[];
+    const rowPx = Math.round(24 * 1.2);
+
+    expect(group.axisTick?.length).toBe(8 + 2 * rowPx);
+    expect(leaf.nameGap).toBe(28 + rowPx);
   });
 
   describe('leaf-only cases match the single-level option exactly', () => {
