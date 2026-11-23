@@ -123,6 +123,7 @@ import {
   resolveColor,
   resolveThemeFillReference,
   getFocusedGradientStops,
+  counterShapeTransform,
 } from './StyleResolver';
 import { applyShapeBackgroundFill } from './ShapeBackgroundFill';
 import { renderTextBody, resolveTextFields, type DrawingMLVerticalTextMode } from './TextRenderer';
@@ -1952,6 +1953,14 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
   if (isLineLike) {
     fillCss = '';
     gradientFillData = null;
+  }
+  if (gradientFillData?.rotWithShape === false) {
+    gradientFillData = counterShapeTransform(
+      gradientFillData,
+      node.rotation,
+      node.flipH,
+      node.flipV,
+    );
   }
 
   let strokeColor = 'none';
