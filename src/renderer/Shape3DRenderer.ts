@@ -139,6 +139,8 @@ export interface StaticShape3DSupportedPlan {
   bounds: { width: number; height: number };
   /** Coordinate space where the child bevel and lighting are evaluated before group stretching. */
   lightingBounds: { width: number; height: number };
+  /** CSS rotate in degrees for an in-plane camera roll, applied outside the xfrm rotation and flips. */
+  screenRotation?: number;
   bevel: {
     preset: 'circle';
     width: number;
@@ -1087,6 +1089,11 @@ function buildCameraProjectionPlan(
   };
 }
 
+export function applyStaticShape3DCameraRoll(wrapper: HTMLElement, plan: StaticShape3DPlan): void {
+  if (plan.mode !== 'orthographic-top-bevel' || plan.screenRotation === undefined) return;
+  wrapper.style.transform = `rotate(${plan.screenRotation}deg) ${wrapper.style.transform}`.trim();
+}
+
 /** Build an explicit supported/fallback plan before mutating the SVG DOM. */
 export function buildStaticShape3DPlan(
   properties: Shape3DProperties | undefined,
@@ -1134,7 +1141,17 @@ export function buildStaticShape3DPlan(
   if (shape?.extrusionColor) return flat('extrusion-paint');
   if (!shape?.bevelTop) return buildCameraProjectionPlan(properties, target, ctx);
   if (scene.cameraPreset !== 'orthographicFront') return flat('camera-preset');
-  if (scene.cameraRotation) return flat('camera-rotation');
+  const cameraRevolution = scene.cameraRotation?.revolution ?? 0;
+  if (
+    scene.cameraRotation &&
+    !rotationEquals(scene.cameraRotation, {
+      latitude: 0,
+      longitude: 0,
+      revolution: cameraRevolution,
+    })
+  ) {
+    return flat('camera-rotation');
+  }
   if (!scene.lightRig) return flat('missing-light-rig');
   if (scene.lightRig !== 'twoPt' && scene.lightRig !== 'threePt') return flat('light-rig');
   if (scene.lightDirection !== 't') return flat('light-direction');
@@ -1226,6 +1243,8 @@ export function buildStaticShape3DPlan(
         : undefined,
     bounds: { width: target.width, height: target.height },
     lightingBounds,
+    // Positive rev rolls counter-clockwise on screen, as LibreOffice draws it.
+    screenRotation: cameraRevolution !== 0 ? -cameraRevolution : undefined,
     bevel: { preset: 'circle', width, height },
     contour,
     light: {

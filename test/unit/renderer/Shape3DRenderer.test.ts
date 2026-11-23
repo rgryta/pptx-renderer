@@ -1244,7 +1244,12 @@ describe('buildStaticShape3DPlan', () => {
     ],
     [
       'camera-rotation',
-      `<a:scene3d><a:camera prst="orthographicFront"><a:rot lat="0" lon="0" rev="60000"/></a:camera><a:lightRig rig="threePt" dir="t"/></a:scene3d>`,
+      `<a:scene3d><a:camera prst="orthographicFront"><a:rot lat="60000" lon="0" rev="0"/></a:camera><a:lightRig rig="threePt" dir="t"/></a:scene3d>`,
+      supportedShape,
+    ],
+    [
+      'camera-rotation',
+      `<a:scene3d><a:camera prst="orthographicFront"><a:rot lat="0" lon="60000" rev="360000"/></a:camera><a:lightRig rig="threePt" dir="t"/></a:scene3d>`,
       supportedShape,
     ],
     [
@@ -1277,6 +1282,30 @@ describe('buildStaticShape3DPlan', () => {
     );
 
     expect(plan).toMatchObject({ mode: 'flat', reason });
+  });
+
+  it.each([
+    ['360000', -6],
+    ['-1800000', 30],
+    ['0', undefined],
+  ])('keeps the bevel plan for an in-plane camera roll rev=%s', (rev, screenRotation) => {
+    const plan = buildStaticShape3DPlan(
+      parseShape3D(
+        `<a:scene3d><a:camera prst="orthographicFront"><a:rot lat="0" lon="0" rev="${rev}"/></a:camera><a:lightRig rig="threePt" dir="t"/></a:scene3d>`,
+        supportedShape,
+      ),
+      {
+        nodeType: 'shape',
+        presetGeometry: 'roundRect',
+        width: 200,
+        height: 100,
+        paintKind: 'solid',
+        baseFill: '#2F75B5',
+      },
+      createMockRenderContext(),
+    );
+
+    expect(plan).toMatchObject({ mode: 'orthographic-top-bevel', screenRotation });
   });
 
   it.each([
