@@ -3113,6 +3113,7 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
       const isSingleLineSpAutoFit =
         !!hasSpAutoFit && !hasNormAutofit && isSingleLineTextBody(textBody);
       const hasCenteredParagraphs = hasExplicitCenteredParagraph(textBody);
+      let storedTextHeight = 0;
 
       // Apply bodyPr (text body properties)
       // Use layout/master bodyPr as fallback for missing attributes
@@ -3162,6 +3163,7 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
         const rightPad = rIns !== undefined ? emuToPx(rIns) : emuToPx(91440);
         const bottomPad = bIns !== undefined ? emuToPx(bIns) : emuToPx(45720);
         const textBoxHeight = textBounds?.h ?? node.size.h;
+        storedTextHeight = textBoxHeight - topPad - bottomPad;
         const collapseVerticalInsets =
           usesImplicitSingleLineFit &&
           !vert &&
@@ -3264,6 +3266,9 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
                 ? {
                     compactSingleLineSpacing: true,
                     defaultLineHeight: '1',
+                    ...(textWrap !== 'none'
+                      ? { compactSingleLineTextHeight: storedTextHeight }
+                      : {}),
                   }
                 : shouldUseOfficeWrappedLineHeight
                   ? {
