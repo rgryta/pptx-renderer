@@ -37,8 +37,12 @@ export function parseTextPercentage(value: string | undefined): number | undefin
   return Number.isFinite(number) ? number / (percent ? 100 : 100000) : undefined;
 }
 
+export const MIN_NORM_AUTOFIT_FONT_SCALE = 0.25;
+
 /** Stored normAutofit@fontScale clamped to [0.25, 1]; missing, zero, negative or garbage = 1. */
 export function parseNormAutofitFontScale(normAutofit: SafeXmlNode | undefined): number {
   const scale = parseTextPercentage(normAutofit?.attr('fontScale'));
-  return scale !== undefined && scale > 0 ? Math.min(1, Math.max(0.25, scale)) : 1;
+  return scale !== undefined && scale > 0
+    ? Math.min(1, Math.max(MIN_NORM_AUTOFIT_FONT_SCALE, scale))
+    : 1;
 }
