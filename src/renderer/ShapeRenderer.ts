@@ -3333,7 +3333,10 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
           if (overflows()) for (const paragraph of leading) paragraph.style.display = 'none';
           return true;
         };
+        let hasMeasuredFit = false;
         const applyDynamicAutofit = () => {
+          // A later pass on a hidden but connected box must not undo the fit it cannot redo.
+          if (hasMeasuredFit && wrapper.isConnected && textContainer.clientHeight === 0) return;
           wrapper.style.width = baseWrapperWidth;
           wrapper.style.height = baseWrapperHeight;
           wrapper.style.top = baseWrapperTop;
@@ -3419,6 +3422,7 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
           const edgeEmptiesHidden = usesVisibleTextHeight && fitEdgeEmptyParagraphs();
           const containerW = textContainer.clientWidth;
           const containerH = textContainer.clientHeight;
+          if (containerW > 0 && containerH > 0) hasMeasuredFit = true;
           const wrappedContentH = textContainer.scrollHeight;
           const wrappedContentW = textContainer.scrollWidth;
           let contentW = wrappedContentW;
