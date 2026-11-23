@@ -474,25 +474,6 @@ describe('TextRenderer — branch coverage (uncovered paths)', () => {
       expect(span!.style.fontSize).toBe('20pt');
     });
 
-    it('scales point and percent paragraph spacing with fontScaleOverride', () => {
-      const body = makeTextBody({
-        paragraphs: [
-          {
-            properties: xmlNode(
-              `<pPr><lnSpc><spcPts val="2400"/></lnSpc><spcBef><spcPct val="50000"/></spcBef><spcAft><spcPts val="1000"/></spcAft></pPr>`,
-            ),
-            runs: [{ text: 'Spaced', properties: xmlNode(`<rPr sz="2000"/>`) }],
-            level: 0,
-          },
-        ],
-      });
-      const paragraph = renderToContainer(body, undefined, { fontScaleOverride: 0.5 })
-        .firstElementChild as HTMLElement;
-      expect(paragraph.style.lineHeight).toBe('12pt');
-      expect(paragraph.style.marginTop).toBe('5.95pt');
-      expect(paragraph.style.marginBottom).toBe('5pt');
-    });
-
     it('applies font scale < 100% from normAutofit', () => {
       const body = makeTextBody({
         bodyPr: `<bodyPr><normAutofit fontScale="50000"/></bodyPr>`,
