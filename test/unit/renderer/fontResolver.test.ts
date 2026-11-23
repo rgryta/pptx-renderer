@@ -113,6 +113,42 @@ describe('fontResolver', () => {
     expect(cjkStack).toContain('"PingFang SC"');
     expect(cjkStack).toContain('"Malgun Gothic"');
     expect(cjkStack.indexOf('"AppleGothic"')).toBeLessThan(cjkStack.indexOf('"Arial Unicode MS"'));
-    expect(cssFontFamilyStack('A "Quoted" \\ Font')).toBe('"A \\"Quoted\\" \\\\ Font"');
+    expect(cssFontFamilyStack('A "Quoted" \\ Font')).toBe(
+      '"A \\"Quoted\\" \\\\ Font", sans-serif',
+    );
+  });
+
+  it('ends unknown font stacks with a generic family chosen from the first font', () => {
+    expect(cssFontFamilyStack('IBM Plex Sans')).toBe('"IBM Plex Sans", sans-serif');
+    expect(cssFontFamilyStack('PT Sans')).toBe('"PT Sans", sans-serif');
+    expect(cssFontFamilyStack('Georgia')).toBe('"Georgia", serif');
+    expect(cssFontFamilyStack('Noto Serif')).toBe('"Noto Serif", serif');
+    expect(cssFontFamilyStack('SimSun')).toBe('"SimSun", serif');
+    expect(cssFontFamilyStack('Fira Mono')).toBe('"Fira Mono", monospace');
+    expect(cssFontFamilyStack('Courier New')).toBe('"Courier New", monospace');
+    expect(cssFontFamilyStack(['__pptx_embedded_1_0', 'Georgia'])).toBe(
+      '"__pptx_embedded_1_0", "Georgia", serif',
+    );
+  });
+
+  it('adds exactly one generic family, last, and none for an empty stack', () => {
+    expect(cssFontFamilyStack(['Calibri', 'IBM Plex Sans'])).toBe(
+      '"Calibri", "Aptos", "Carlito", system-ui, "Arial", "Helvetica", sans-serif, "IBM Plex Sans"',
+    );
+    expect(cssFontFamilyStack(['IBM Plex Sans', 'Calibri'])).toBe(
+      '"IBM Plex Sans", "Calibri", "Aptos", "Carlito", system-ui, "Arial", "Helvetica", sans-serif',
+    );
+    expect(cssFontFamilyStack(['Georgia', 'monospace'])).toBe('"Georgia", monospace');
+    expect(cssFontFamilyStack('')).toBe('');
+    expect(cssFontFamilyStack([])).toBe('');
+  });
+
+  it('appends the generic after theme placeholders resolve', () => {
+    const ctx = createMockRenderContext();
+    ctx.theme.majorFont = { latin: 'Public Sans', ea: '', cs: '' };
+
+    expect(cssFontFamilyStack(resolveThemeFontStack(['+mj-lt'], ctx))).toBe(
+      '"Public Sans", sans-serif',
+    );
   });
 });
