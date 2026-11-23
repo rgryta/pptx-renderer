@@ -85,7 +85,7 @@ for (const [name, body, size] of [
   });
 }
 
-test('stale stored fontScale whose render still overflows fits the full-size render by measurement', async ({
+test('stored fontScale that overflows at every font scale keeps the stored render fit', async ({
   page,
 }) => {
   await page.goto('/test/browser/blank.html');
@@ -97,10 +97,8 @@ test('stale stored fontScale whose render still overflows fits the full-size ren
     '<a:lvl1pPr><a:spcBef><a:spcPts val="2000"/></a:spcBef></a:lvl1pPr>',
     433,
   );
-  expect(result.fontSize).toBe('25.3333px');
-  const scale = Number(/^scale\(([\d.]+)\)$/.exec(result.transform)?.[1]);
-  expect(scale).toBeGreaterThanOrEqual(0.25);
-  expect(scale).toBeLessThan(1);
+  expect(result.fontSize).toBe('6.33333px');
+  expect(result.transform).toMatch(/^scale\(0\.\d+\)$/);
   expect(result.overflow).toBeLessThanOrEqual(1);
 });
 
@@ -126,4 +124,64 @@ test('stale stored fontScale ignores trailing empty paragraphs when fitting visi
   expect(parseFloat(result.fontSize) * scale).toBeGreaterThanOrEqual(2 * 0.25 * (1900 / 75));
   expect(result.overflow).toBeLessThanOrEqual(1);
   expect(result.underflow).toBeLessThanOrEqual(1);
+});
+
+test('stale stored fontScale boxes side by side wrap at their own width and stay inside', async ({
+  page,
+}) => {
+  await page.goto('/test/browser/blank.html');
+  const heading = 'Alpha 13 issued total (From 01/04-2025 until 01/09 - 2026):';
+  const lines = [
+    `<a:r><a:rPr sz="1900"/><a:t>${heading}</a:t></a:r>`,
+    ...['Issued in total : 103', 'Completed : 47', 'Open : 56', 'Overdue : 3', 'Next review Q3'].map(
+      (text) => `<a:r><a:rPr sz="1900"/><a:t>${text}</a:t></a:r>`,
+    ),
+    '<a:endParaRPr sz="6400"/>',
+    ...Array.from({ length: 15 }, () => '<a:endParaRPr sz="1900"/>'),
+  ].join('</a:p><a:p>');
+  const results = await page.evaluate(
+    async ({ lines, heading }) => {
+      const { renderTextFixture } = await import('/test/fixtures/text-coverage.ts');
+      const rendered = [0, 1, 2].map((column) => {
+        const { element, span, container } = renderTextFixture(
+          '<a:bodyPr vert="horz" wrap="square" anchor="ctr"><a:normAutofit fontScale="25000" lnSpcReduction="20000"/></a:bodyPr>',
+          '',
+          '',
+          '',
+          lines,
+          undefined,
+          { cx: 433 * 9525, cy: 179 * 9525 },
+        );
+        element.style.left = `${column * 460}px`;
+        document.body.append(element);
+        return { element, span, container };
+      });
+      await document.fonts.ready;
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      );
+      return rendered.map(({ element, span, container }) => {
+        const box = element.getBoundingClientRect();
+        const rects = [...container.querySelectorAll('span')]
+          .filter((s) => s.textContent?.trim())
+          .map((s) => s.getBoundingClientRect());
+        return {
+          fontSize: parseFloat(getComputedStyle(span).fontSize),
+          transform: container.style.transform,
+          headingLines: span.textContent === heading ? span.getClientRects().length : 0,
+          left: box.left - Math.min(...rects.map((rect) => rect.left)),
+          right: Math.max(...rects.map((rect) => rect.right)) - box.right,
+          top: box.top - Math.min(...rects.map((rect) => rect.top)),
+          bottom: Math.max(...rects.map((rect) => rect.bottom)) - box.bottom,
+        };
+      });
+    },
+    { lines, heading },
+  );
+  for (const result of results) {
+    expect(result.transform).toBe('');
+    expect(result.fontSize).toBeGreaterThanOrEqual(0.6 * (1900 / 75));
+    expect(result.headingLines).toBeGreaterThanOrEqual(2);
+    expect(Math.max(result.left, result.right, result.top, result.bottom)).toBeLessThanOrEqual(1);
+  }
 });
