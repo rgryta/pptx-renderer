@@ -2157,6 +2157,7 @@ export interface ParseChartResult {
   option: EChartsTypes.EChartsOption;
   dataTable?: DataTableInfo;
   chartFrameStyle?: ChartFrameStyle;
+  unsupported?: string;
 }
 
 function buildOptionForChartType(
@@ -2412,6 +2413,7 @@ export function parseChartXml(
     return {
       option: { title: { text: 'Unsupported chart', left: 'center' } },
       chartFrameStyle: extractChartFrameStyle(chartXml, chartCtx),
+      unsupported: 'Chart has no plot area',
     };
   }
 
@@ -2419,18 +2421,15 @@ export function parseChartXml(
   const { chartBg, plotAreaBg } = extractBackgroundColors(chartXml, chart, chartCtx);
   const chartFrameStyle = extractChartFrameStyle(chartXml, chartCtx);
 
-  const chartTypeEntries = CHART_TYPE_ELEMENTS.flatMap((typeName) =>
-    plotArea.children(typeName).map((chartTypeNode) => {
-      const seriesArr = parseSeries(chartTypeNode, chartCtx);
-      if (seriesArr.length === 0) return null;
-      return { typeName, chartTypeNode, seriesArr };
-    }),
-  ).filter(
-    (
-      entry,
-    ): entry is { typeName: OoxmlChartType; chartTypeNode: SafeXmlNode; seriesArr: SeriesData[] } =>
-      entry !== null,
+  const knownTypeEntries = CHART_TYPE_ELEMENTS.flatMap((typeName) =>
+    plotArea.children(typeName).map((chartTypeNode) => ({
+      typeName,
+      chartTypeNode,
+      seriesArr: parseSeries(chartTypeNode, chartCtx),
+    })),
   );
+  const entriesWithSeries = knownTypeEntries.filter((entry) => entry.seriesArr.length > 0);
+  const chartTypeEntries = entriesWithSeries.length > 0 ? entriesWithSeries : knownTypeEntries;
 
   for (const [index, entry] of chartTypeEntries.entries()) {
     let option = buildOptionForChartType(
@@ -2528,6 +2527,13 @@ export function parseChartXml(
       title: { text: 'Unsupported chart type', left: 'center', textStyle: { fontSize: 12 } },
     },
     chartFrameStyle,
+    unsupported: `Unsupported chart type: ${
+      plotArea
+        .allChildren()
+        .map((child) => child.localName)
+        .filter((name) => name.endsWith('Chart'))
+        .join(', ') || 'none'
+    }`,
   };
 }
 
@@ -2558,6 +2564,7 @@ export function renderChart(node: ChartNodeData, ctx: RenderContext): HTMLElemen
     wrapper.style.color = '#999';
     wrapper.style.fontSize = '12px';
     wrapper.textContent = 'Chart not found';
+    ctx.onNodeError?.(node.id, new Error(`Chart not found: ${node.chartPath}`));
     return wrapper;
   }
 
@@ -2573,12 +2580,13 @@ export function renderChart(node: ChartNodeData, ctx: RenderContext): HTMLElemen
   // Parse chart data and create ECharts option
   const chartTheme = ctx.presentation.chartThemes?.get(node.chartPath);
   const chartCtx = chartTheme ? { ...ctx, theme: chartTheme, colorCache: new Map() } : ctx;
-  const { option, dataTable, chartFrameStyle } = parseChartXml(
+  const { option, dataTable, chartFrameStyle, unsupported } = parseChartXml(
     chartXml,
     chartCtx,
     node.chartPath,
     node.size,
   );
+  if (unsupported) ctx.onNodeError?.(node.id, new Error(unsupported));
   applyZeroCrossingAxisLabelLayout(option, node.size);
   if (chartFrameStyle) {
     wrapper.style.boxSizing = 'border-box';
