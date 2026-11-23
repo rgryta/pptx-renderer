@@ -8330,13 +8330,14 @@ describe('ChartRenderer', () => {
 
       const { option } = parseChartOption(xml);
       const series = option.series as any[];
+      const byName = (name: string) => series.find((s) => s.name === name);
 
-      expect(series[0].data[0].itemStyle).toMatchObject({
+      expect(byName('Default invert').data[0].itemStyle).toMatchObject({
         color: '#FFFFFF',
         borderColor: '#000000',
         borderWidth: 1,
       });
-      expect(series[1].data[0]).toBe(-5);
+      expect(byName('No invert').data[0]).toBe(-5);
       expect((option.yAxis as any).type).toBe('category');
     });
 
