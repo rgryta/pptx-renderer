@@ -30,6 +30,9 @@ import * as echarts from 'echarts';
  * Build a minimal OOXML chartSpace XML string for a bar chart.
  * The chartSpace uses c: namespace prefix (like real PPTX files).
  */
+const BASE_11PT_TXPR =
+  '</c:chart><c:txPr><a:bodyPr/><a:p><a:pPr><a:defRPr sz="1100"/></a:pPr></a:p></c:txPr>';
+
 function buildChartSpaceXml(opts: {
   /** If true, include a <c:legend> element */
   hasLegend?: boolean;
@@ -475,7 +478,7 @@ describe('ChartRenderer', () => {
       const xml = buildChartSpaceXml({ hasLegend: true, legendPos: 'b', legendTxPr });
       const { option } = parseChartOption(xml);
       const legend = option.legend as any;
-      expect(legend?.textStyle?.fontSize).toBe(12);
+      expect(legend?.textStyle?.fontSize).toBe(16);
     });
 
     it('should apply legend text outer shadow from legend txPr defRPr effectLst', () => {
@@ -785,8 +788,25 @@ describe('ChartRenderer', () => {
       const { option } = parseChartOption(xml);
 
       const xAxis = option.xAxis as any;
-      expect(xAxis?.axisLabel?.fontSize).toBe(14);
+      expect(xAxis?.axisLabel?.fontSize).toBe(18.67);
     });
+
+    it.each([
+      ['900', 12],
+      ['700', 9.33],
+    ])(
+      'keeps an explicit sz=%s axis label at %s px on a chart with an 11pt base size',
+      (sz, px) => {
+        const xml = buildChartSpaceXml({
+          hasLegend: false,
+          catAxTxPr: `<a:bodyPr/><a:p><a:pPr><a:defRPr sz="${sz}"/></a:pPr></a:p>`,
+        }).replace('</c:chart>', BASE_11PT_TXPR);
+        const { option } = parseChartOption(xml);
+
+        expect((option.xAxis as any).axisLabel.fontSize).toBe(px);
+        expect((option.yAxis as any).axisLabel.fontSize).toBe(14.67);
+      },
+    );
 
     it('should not override axis label color when no txPr exists', () => {
       const xml = buildChartSpaceXml({
@@ -853,7 +873,7 @@ describe('ChartRenderer', () => {
       expect(yAxis.nameRotate).toBe(-90);
       expect(yAxis.nameTextStyle).toMatchObject({
         color: '#222222',
-        fontSize: 12,
+        fontSize: 16,
       });
       expect(yAxis.nameTextStyle.fontFamily).toContain('Calibri');
       expect(yAxis.nameTextStyle.fontFamily).not.toContain('+mn-lt');
@@ -1076,7 +1096,7 @@ describe('ChartRenderer', () => {
       </c:chartSpace>`;
       const { option } = parseChartOption(xml);
       const series = (option.series as any[])?.[0];
-      expect(series?.label?.fontSize).toBe(16);
+      expect(series?.label?.fontSize).toBe(21.33);
     });
 
     it('should apply data label bold from dLbls txPr defRPr b=1', () => {
@@ -1250,8 +1270,20 @@ describe('ChartRenderer', () => {
       });
       const { option } = parseChartOption(xml);
       const title = option.title as any;
-      expect(title?.textStyle?.fontSize).toBe(18);
+      expect(title?.textStyle?.fontSize).toBe(24);
       expect(title?.textStyle?.color).toMatch(/[1]{1}[2]{1}[3]{1}[4]{1}[5]{1}[6]{1}|#123456/i);
+    });
+
+    it('keeps an explicit 10pt title at 13.33px on a chart with an 11pt base size', () => {
+      const xml = buildChartSpaceXml({
+        hasLegend: false,
+        autoTitleDeleted: false,
+        titleText: 'My Chart',
+        titleTxPr: '<a:bodyPr/><a:p><a:pPr><a:defRPr sz="1000"/></a:pPr></a:p>',
+      }).replace('</c:chart>', BASE_11PT_TXPR);
+      const { option } = parseChartOption(xml);
+
+      expect((option.title as any).textStyle.fontSize).toBe(13.33);
     });
 
     it('should apply title text outer shadow from title txPr defRPr effectLst', () => {
@@ -1312,7 +1344,7 @@ describe('ChartRenderer', () => {
 
       expect(title?.text).toBe('{r0|1.2X }{r1|模型微调速度提升}');
       expect(title.textStyle.rich.r0).toMatchObject({ color: '#4D62D7', fontWeight: 'bold' });
-      expect(title.textStyle.rich.r1).toMatchObject({ fontSize: 16, fontWeight: 'normal' });
+      expect(title.textStyle.rich.r1).toMatchObject({ fontSize: 21.33, fontWeight: 'normal' });
     });
 
     it('should apply title rich text style when title txPr is omitted', () => {
@@ -1325,7 +1357,7 @@ describe('ChartRenderer', () => {
       });
       const { option } = parseChartOption(xml);
       const title = option.title as any;
-      expect(title?.textStyle?.fontSize).toBe(16);
+      expect(title?.textStyle?.fontSize).toBe(21.33);
       expect(title?.textStyle?.color).toBe('#654321');
     });
 
@@ -2480,6 +2512,36 @@ describe('ChartRenderer', () => {
       expect(radar.indicator[1].axisLabel).toBeUndefined();
     });
 
+    it('keeps an explicit 7pt radar value-axis label at 9.33px on a chart with an 11pt base size', () => {
+      const xml = `
+        <c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"
+                      xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+          <c:chart>
+            <c:autoTitleDeleted val="1"/>
+            <c:plotArea>
+              <c:radarChart>
+                <c:radarStyle val="marker"/>
+                <c:ser>
+                  <c:idx val="0"/><c:order val="0"/>
+                  <c:cat><c:strRef><c:strCache><c:ptCount val="3"/><c:pt idx="0"><c:v>A</c:v></c:pt><c:pt idx="1"><c:v>B</c:v></c:pt><c:pt idx="2"><c:v>C</c:v></c:pt></c:strCache></c:strRef></c:cat>
+                  <c:val><c:numRef><c:numCache><c:ptCount val="3"/><c:pt idx="0"><c:v>5</c:v></c:pt><c:pt idx="1"><c:v>7</c:v></c:pt><c:pt idx="2"><c:v>9</c:v></c:pt></c:numCache></c:numRef></c:val>
+                </c:ser>
+                <c:axId val="1"/><c:axId val="2"/>
+              </c:radarChart>
+              <c:catAx><c:axId val="1"/><c:delete val="0"/><c:crossAx val="2"/></c:catAx>
+              <c:valAx><c:axId val="2"/><c:delete val="0"/><c:tickLblPos val="nextTo"/><c:crossAx val="1"/>
+                <c:txPr><a:bodyPr/><a:p><a:pPr><a:defRPr sz="700"/></a:pPr></a:p></c:txPr>
+              </c:valAx>
+            </c:plotArea>
+          </c:chart>
+          <c:txPr><a:bodyPr/><a:p><a:pPr><a:defRPr sz="1100"/></a:pPr></a:p></c:txPr>
+        </c:chartSpace>`;
+
+      const radar = parseChartOption(xml).option.radar as any;
+
+      expect(radar.indicator[0].axisLabel.fontSize).toBe(9.33);
+    });
+
     it('keeps radar gridlines gray for old theme charts unless axis styling is explicit (oracle-pypptx-chart-0018)', () => {
       const xml = `
         <c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"
@@ -3041,7 +3103,7 @@ describe('ChartRenderer', () => {
       expect(series[1].symbolSize).toBe(0);
       expect(series[1].endLabel.show).toBe(false);
       expect(series[1].label.show).toBe(true);
-      expect(series[1].label.fontSize).toBe(6);
+      expect(series[1].label.fontSize).toBe(8);
       expect(series[1].label.backgroundColor).toBe('#FFFFFF');
       expect(series[1].label.borderColor).toBe('#BFBFBF');
       expect(series[1].label.borderWidth).toBeGreaterThan(0);
@@ -3050,9 +3112,9 @@ describe('ChartRenderer', () => {
       expect(yAxis[1].axisLabel.formatter(0.24)).toBe('24%');
       expect(yAxis[0].max).toBeGreaterThan(600);
       expect(yAxis[1].max).toBeLessThanOrEqual(1);
-      expect(tooltip.textStyle.fontSize).toBe(9);
-      expect(tooltip.extraCssText).toContain('font-size: 9px');
-      expect(legend.textStyle.fontSize).toBe(9);
+      expect(tooltip.textStyle.fontSize).toBe(12);
+      expect(tooltip.extraCssText).toContain('font-size: 12px');
+      expect(legend.textStyle.fontSize).toBe(12);
     });
 
     it('keeps repeated same-type combo chart nodes on their secondary axes', () => {
@@ -3762,7 +3824,7 @@ describe('ChartRenderer', () => {
       expect(legend.style.left).toBe('50%');
       expect(legend.style.transform).toBe('translateX(-50%)');
       expect(labels.map((label) => label.textContent)).toEqual(['算力', '增速']);
-      expect(labels.every((label) => label.style.fontSize === '9px')).toBe(true);
+      expect(labels.every((label) => label.style.fontSize === '12px')).toBe(true);
     });
 
     it('renders right legends vertically centered (oracle-full-chart-0001-clustered-bar)', () => {
@@ -4974,8 +5036,8 @@ describe('ChartRenderer', () => {
           '</c:chart><c:txPr><a:bodyPr/><a:p><a:pPr><a:defRPr sz="1400"/></a:pPr></a:p></c:txPr>',
         );
         const series = (parseChartOption(xml).option.series as any[])[0];
-        expect(series.label.fontSize).toBe(19);
-        expect(series.data[1].label.fontSize).toBe(19);
+        expect(series.label.fontSize).toBe(18.67);
+        expect(series.data[1].label.fontSize).toBe(18.67);
       });
     });
   });
@@ -7770,7 +7832,7 @@ describe('ChartRenderer', () => {
       expect(series.labelLine.show).toBe(true);
       expect(point.label.position).toBe('inside');
       expect(point.label.color).toBe('#FF0000');
-      expect(point.label.fontSize).toBe(14);
+      expect(point.label.fontSize).toBe(18.67);
       expect(point.label.formatter({ name: 'B', value: 75, percent: 75 })).toBe('B 75%');
       expect(
         series.labelLayout({ dataIndex: 1, rect: { x: 0, y: 0, width: 400, height: 300 } }),
