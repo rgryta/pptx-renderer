@@ -264,7 +264,7 @@ type PixelBox = { w: number; h: number };
 const PIE_LABEL_REACH_X_PX = 15 + 30 + 5; // ECharts pie defaults: labelLine length + length2 + distanceToLabelLine
 const PIE_LABEL_REACH_Y_PX = 15;
 const PIE_LABEL_LINE_HEIGHT = 1.2;
-const PIE_MIN_LABEL_FIT_RADIUS_PCT = 30;
+const PIE_MIN_FIT_RADIUS_PCT = 30;
 const PIE_LABEL_WRAP_ROOM_SHARE = 0.5; // a wrapped label column as wide as the disc radius it sits beside
 
 /** ECharts sizes a percentage pie radius against half the shorter side; keep the disc and its outside labels inside the chart box below the title band. */
@@ -286,7 +286,10 @@ function fitPieRadiusPct(
   const halfShortSide = Math.min(chartSize.w, chartSize.h) / 2;
   const discPct = Math.min(
     radiusPct,
-    Math.floor((Math.min(roomXPx, roomYPx) / halfShortSide) * 100),
+    Math.max(
+      PIE_MIN_FIT_RADIUS_PCT,
+      Math.floor((Math.min(roomXPx, roomYPx) / halfShortSide) * 100),
+    ),
   );
   if (!outsideLabels.length) return discPct;
   const bleedMarginPx = Math.min(chartSize.w, chartSize.h) > 200 ? 10 : 2;
@@ -302,7 +305,7 @@ function fitPieRadiusPct(
       ? labelPctFor(pieLabelBox(outsideLabels, sideRoomPx * PIE_LABEL_WRAP_ROOM_SHARE))
       : -Infinity,
   );
-  return Math.min(discPct, Math.max(PIE_MIN_LABEL_FIT_RADIUS_PCT, labelPct));
+  return Math.min(discPct, Math.max(PIE_MIN_FIT_RADIUS_PCT, labelPct));
 }
 
 type PieLabelText = { lineWidthsPx: number[]; lineHeightPx: number; padX: number; padY: number };
@@ -327,13 +330,14 @@ function estimatePieOutsideLabels(
     pointOverrides: Map<number, Partial<DataLabelConfig>>;
   }[],
   defaultFs: number | undefined,
+  isDoughnut: boolean,
 ): PieLabelText[] {
   const labels: PieLabelText[] = [];
   for (const { series, sharedLabels, pointOverrides } of metas) {
     const total = series.values.reduce((sum, v) => sum + (v || 0), 0);
     series.categories.forEach((cat, i) => {
       const cfg = mergeDataLabelConfig(sharedLabels, pointOverrides.get(i));
-      const label = buildPieLabelOption(cfg, series.formatCode, series.name, total);
+      const label = buildPieLabelOption(cfg, series.formatCode, series.name, total, isDoughnut);
       if (!cfg || !label || label.position !== 'outside' || cfg.manualLayout) return;
       const formatter = label.formatter as (params: { name: string; value: number }) => string;
       const lines = formatter({ name: cat || `Item ${i + 1}`, value: series.values[i] ?? 0 }).split(
@@ -686,7 +690,8 @@ function applyAreaAxisRange(
   }
 }
 
-function mapPieLabelPosition(pos: string | undefined): 'inside' | 'outside' {
+function mapPieLabelPosition(pos: string | undefined, isDoughnut: boolean): 'inside' | 'outside' {
+  if (isDoughnut && (pos === undefined || pos === 'bestFit')) return 'inside'; // Office centres doughnut labels on the ring
   switch (pos) {
     case 'ctr':
     case 'inEnd':
@@ -767,6 +772,7 @@ function buildPieLabelOption(
   formatCode: string | undefined,
   seriesName: string,
   seriesTotal: number,
+  isDoughnut: boolean,
 ): Record<string, unknown> | undefined {
   if (!cfg || !dataLabelShowsContent(cfg)) return undefined;
   const labelCfg = cfg;
@@ -796,7 +802,7 @@ function buildPieLabelOption(
     fontSize: labelCfg.fontSize ?? 10,
     ...(labelCfg.bold === true ? { fontWeight: 'bold' as const } : {}),
     ...(labelCfg.color ? { color: labelCfg.color } : {}),
-    position: mapPieLabelPosition(labelCfg.position),
+    position: mapPieLabelPosition(labelCfg.position, isDoughnut),
     ...dataLabelBoxProps(labelCfg),
   };
   return labelCfg.fontSize !== undefined ? markExplicitFontSize(label) : label;
@@ -1461,12 +1467,15 @@ function buildPieChartOption(
     };
   });
 
+  const showsRadiusLabel = (cfg: DataLabelConfig | undefined) =>
+    dataLabelShowsContent(cfg) &&
+    (!isDoughnut || mapPieLabelPosition(cfg?.position, true) === 'outside');
   const showLabel = seriesLabelMeta.some(
     (meta) =>
       !meta.labelsExplicitlyOff &&
-      (dataLabelShowsContent(meta.sharedLabels) ||
+      (showsRadiusLabel(meta.sharedLabels) ||
         [...meta.pointOverrides.values()].some((override) =>
-          dataLabelShowsContent(mergeDataLabelConfig(meta.sharedLabels, override)),
+          showsRadiusLabel(mergeDataLabelConfig(meta.sharedLabels, override)),
         )),
   );
   const holeSizePct = isDoughnut ? (chartTypeNode.child('holeSize').numAttr('val') ?? 50) : 50;
@@ -1495,7 +1504,7 @@ function buildPieChartOption(
     chartSize,
     explosionOffsetPx,
     titleBandPx,
-    estimatePieOutsideLabels(seriesLabelMeta, defaultFs),
+    estimatePieOutsideLabels(seriesLabelMeta, defaultFs, isDoughnut),
   );
   const startAngle = mapFirstSliceAngle(chartTypeNode.child('firstSliceAng').numAttr('val'));
 
@@ -1533,6 +1542,7 @@ function buildPieChartOption(
           meta.series.formatCode,
           meta.series.name,
           seriesTotal,
+          isDoughnut,
         ) ?? { show: false };
       }
       return item;
@@ -1543,6 +1553,7 @@ function buildPieChartOption(
       meta.series.formatCode,
       meta.series.name,
       seriesTotal,
+      isDoughnut,
     );
     const hasLeaderLines =
       Boolean(meta.sharedLabels?.showLeaderLines) ||
