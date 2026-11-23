@@ -3332,7 +3332,8 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
         const baseSvgPreserveAspectRatio = mainSvg?.getAttribute('preserveAspectRatio') ?? null;
         const usesVisibleTextHeight = hasNormAutofit && !isVerticalText;
         const baseJustifyContent = textContainer.style.justifyContent;
-        // Edge empty paragraphs leave the fit measurement of an overflowing body; the render keeps them.
+        // Edge empty paragraphs leave the fit measurement of an overflowing body; the render keeps them
+        // only at the stored scale, where PowerPoint drew them.
         const hideEdgeEmptyParagraphs = (heightTolerance = 1): HTMLElement[] => {
           const paragraphs = Array.from(textContainer.children) as HTMLElement[];
           const isEmpty = (paragraph: HTMLElement) =>
@@ -3498,8 +3499,11 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
             measuredUnwrappedWidth = true;
             textContainer.style.whiteSpace = savedWhiteSpace;
           }
-          for (const paragraph of hiddenEdgeEmpties) paragraph.style.display = '';
-          textContainer.style.justifyContent = savedJC;
+          const keepsEdgeEmpties = hiddenEdgeEmpties.length > 0 && !fittedByFontScale;
+          if (keepsEdgeEmpties)
+            for (const paragraph of hiddenEdgeEmpties) paragraph.style.display = '';
+          textContainer.style.justifyContent =
+            hiddenEdgeEmpties.length > 0 && fittedByFontScale ? 'flex-start' : savedJC;
           if (!wasConnected) {
             if (wrapper.parentNode === measurementRoot) {
               measurementRoot.removeChild(wrapper);
@@ -3643,7 +3647,7 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
             textContainer.style.height = expandCssLengthForScale(baseHeight, scale);
           }
           if (
-            hiddenEdgeEmpties.length > 0 ||
+            keepsEdgeEmpties ||
             (scale >= 1 &&
               (hasToleratedVerticalMetricOverhang ||
                 hasIgnoredImplicitSingleLineVerticalOverflow ||
