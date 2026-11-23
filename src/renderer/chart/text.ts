@@ -259,7 +259,18 @@ export function extractTitleRichText(
   return { text: paragraphs.join('\n'), rich };
 }
 
-export function getChartThemeFontFamily(ctx: RenderContext): string | undefined {
-  const fontStack = resolveThemeFontStack(['+mn-lt', '+mn-ea', '+mj-lt', '+mj-ea'], ctx);
+export function getChartThemeFontFamily(
+  ctx: RenderContext,
+  chartSpace?: SafeXmlNode,
+): string | undefined {
+  const chartLatin = chartSpace
+    ?.child('txPr')
+    .children('p')
+    .map((p) => p.child('pPr').child('defRPr').child('latin').attr('typeface'))
+    .find(Boolean);
+  const fontStack = resolveThemeFontStack(
+    [chartLatin, '+mn-lt', '+mn-ea', '+mj-lt', '+mj-ea'],
+    ctx,
+  );
   return fontStack.length > 0 ? cssFontFamilyStack(fontStack) : undefined;
 }

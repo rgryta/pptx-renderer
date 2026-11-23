@@ -32,6 +32,9 @@ import * as echarts from 'echarts';
  */
 const BASE_11PT_TXPR =
   '</c:chart><c:txPr><a:bodyPr/><a:p><a:pPr><a:defRPr sz="1100"/></a:pPr></a:p></c:txPr>';
+const BASE_11PT_MONTSERRAT_TXPR =
+  '</c:chart><c:txPr><a:bodyPr/><a:p><a:pPr><a:defRPr sz="1100"/></a:pPr></a:p>' +
+  '<a:p><a:pPr><a:defRPr><a:latin typeface="Montserrat"/></a:defRPr></a:pPr></a:p></c:txPr>';
 
 function buildChartSpaceXml(opts: {
   /** If true, include a <c:legend> element */
@@ -1286,6 +1289,51 @@ describe('ChartRenderer', () => {
       expect((option.title as any).textStyle.fontSize).toBe(13.33);
     });
 
+    it('draws an unsized title at 1.2x an 11pt base size', () => {
+      const xml = buildChartSpaceXml({
+        hasLegend: false,
+        autoTitleDeleted: false,
+        titleText: 'My Chart',
+      }).replace('</c:chart>', BASE_11PT_TXPR);
+      const { option } = parseChartOption(xml);
+
+      expect((option.title as any).textStyle.fontSize).toBe(17.6);
+    });
+
+    it('keeps the builder default for an unsized title on a chart without a base size', () => {
+      const xml = buildChartSpaceXml({
+        hasLegend: false,
+        autoTitleDeleted: false,
+        titleText: 'My Chart',
+      });
+      const { option } = parseChartOption(xml);
+
+      expect((option.title as any).textStyle.fontSize).toBe(12);
+    });
+
+    it('leads title, legend, data label and axis name fonts with the chart latin typeface', () => {
+      const xml = buildChartSpaceXml({
+        hasLegend: true,
+        autoTitleDeleted: false,
+        titleText: 'My Chart',
+        valAxDeleted: false,
+        valAxTitleText: 'Units',
+      })
+        .replace('<c:cat>', '<c:dLbls><c:showVal val="1"/></c:dLbls><c:cat>')
+        .replace('</c:chart>', BASE_11PT_MONTSERRAT_TXPR);
+      const { option } = parseChartOption(xml);
+      const families = [
+        (option.title as any).textStyle.fontFamily,
+        (option.legend as any).textStyle.fontFamily,
+        (option.series as any[])[0].label.fontFamily,
+        (option.yAxis as any).nameTextStyle.fontFamily,
+      ];
+
+      for (const family of families) {
+        expect(family).toMatch(/^"Montserrat", "Calibri"/);
+      }
+    });
+
     it('should apply title text outer shadow from title txPr defRPr effectLst', () => {
       const titleTxPr = `
         <a:bodyPr/>
@@ -2189,6 +2237,19 @@ describe('ChartRenderer', () => {
       function titleBandPx(title: any, lines: number): number {
         return 5 + lines * title.textStyle.lineHeight;
       }
+
+      it('sizes an unsized title and its band from 1.2x the base and labels in the chart font', () => {
+        const xml = titledPieXml({
+          titleXml: `<c:title><c:tx><c:rich><a:bodyPr/><a:p><a:r><a:t>${longTitle}</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title>`,
+        })
+          .replace('<c:cat>', '<c:dLbls><c:showPercent val="1"/></c:dLbls><c:cat>')
+          .replace('</c:chart>', BASE_11PT_MONTSERRAT_TXPR);
+        const { series, title } = parsePie(xml);
+
+        expect(title.textStyle).toMatchObject({ fontSize: 17.6, lineHeight: 22 });
+        expect(discTopPx(series)).toBeGreaterThanOrEqual(titleBandPx(title, 2));
+        expect(series.label.fontFamily).toMatch(/^"Montserrat"/);
+      });
 
       it('wraps a long title at 80% of the chart width and keeps the pie below both lines', () => {
         const { series, title } = parsePie(titledPieXml({ legendPos: 'b' }));
