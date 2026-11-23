@@ -5165,7 +5165,7 @@ describe('ChartRenderer', () => {
       });
 
       it('shrinks the pie so wide outside labels stay inside the chart box', () => {
-        const name = 'Completed tasks';
+        const name = 'Completed';
         const series = sizedSeries(pieSeries(catPct(), [name, 'Open']));
         const radiusPx = (parseFloat(series.radius) / 100) * (chartSize.h / 2);
         const cx = chartSize.w / 2;
@@ -5174,9 +5174,33 @@ describe('ChartRenderer', () => {
         expect(chartSize.h * 0.55 + radiusPx + 15 + 12).toBeLessThanOrEqual(chartSize.h);
       });
 
+      it('wraps a long outside label at half the side room instead of shrinking the pie to 30%', () => {
+        const series = sizedSeries(pieSeries(catPct(), ['Completed'.repeat(4), 'Open']));
+        const radiusPx = (parseFloat(series.radius) / 100) * (chartSize.h / 2);
+        const labelColumnPx = (chartSize.w / 2 - 50 - 10) / 2;
+        const wrappedLines =
+          Math.ceil(estimateTextWidthPx('Completed'.repeat(4), 10) / labelColumnPx) + 1;
+        expect(parseFloat(series.radius)).toBeGreaterThan(30);
+        expect(radiusPx + 50 + 10 + labelColumnPx).toBeLessThanOrEqual(chartSize.w / 2);
+        expect(chartSize.h * 0.55 + radiusPx + 15 + (wrappedLines * 12) / 2).toBeLessThanOrEqual(
+          chartSize.h,
+        );
+      });
+
       it('never shrinks a labelled pie below 30%', () => {
-        const series = sizedSeries(pieSeries(catPct(), ['Completed'.repeat(10), 'Open']));
+        const series = sizedSeries(pieSeries(catPct(), ['Completed'.repeat(40), 'Open']));
         expect(series.radius).toBe('30%');
+      });
+
+      it('hides a per-point label that turns every part off under a labelled series', () => {
+        const xml = pieSeries(`<c:dLbls>
+          <c:dLbl><c:idx val="1"/><c:showPercent val="0"/><c:showCatName val="0"/></c:dLbl>
+          <c:showCatName val="1"/><c:showPercent val="1"/>
+        </c:dLbls>`);
+        const series = (parseChartOption(xml).option.series as any[])[0];
+        expect(series.label.show).toBe(true);
+        expect(series.data[0].label).toBeUndefined();
+        expect(series.data[1].label).toEqual({ show: false });
       });
 
       it('keeps the default radius for inside labels', () => {

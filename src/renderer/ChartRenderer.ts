@@ -211,7 +211,7 @@ function computePieLayout(
   chartSize?: ChartPixelSize,
   explosionOffsetPx = 0,
   titleBandPx = 0,
-  outsideLabelPx: PixelBox = { w: 0, h: 0 },
+  outsideLabels: PieLabelText[] = [],
 ): { center: [string, string]; radius: [string, string] | string } {
   const placement = getLegendPlacement(legendInfo);
   let center: [string, string] = ['50%', '55%'];
@@ -248,7 +248,7 @@ function computePieLayout(
     chartSize,
     explosionOffsetPx,
     titleBandPx,
-    outsideLabelPx,
+    outsideLabels,
   );
 
   if (!isDoughnut) {
@@ -265,6 +265,7 @@ const PIE_LABEL_REACH_X_PX = 15 + 30 + 5; // ECharts pie defaults: labelLine len
 const PIE_LABEL_REACH_Y_PX = 15;
 const PIE_LABEL_LINE_HEIGHT = 1.2;
 const PIE_MIN_LABEL_FIT_RADIUS_PCT = 30;
+const PIE_LABEL_WRAP_ROOM_SHARE = 0.5; // a wrapped label column as wide as the disc radius it sits beside
 
 /** ECharts sizes a percentage pie radius against half the shorter side; keep the disc and its outside labels inside the chart box below the title band. */
 function fitPieRadiusPct(
@@ -273,7 +274,7 @@ function fitPieRadiusPct(
   chartSize: ChartPixelSize | undefined,
   explosionOffsetPx: number,
   topPx = 0,
-  outsideLabelPx: PixelBox = { w: 0, h: 0 },
+  outsideLabels: PieLabelText[] = [],
 ): number {
   if (!chartSize || !(chartSize.w > 0) || !(chartSize.h > 0)) return radiusPct;
   const cx = (parseFloat(center[0]) / 100) * chartSize.w;
@@ -287,25 +288,47 @@ function fitPieRadiusPct(
     radiusPct,
     Math.floor((Math.min(roomXPx, roomYPx) / halfShortSide) * 100),
   );
-  if (!(outsideLabelPx.w > 0)) return discPct;
+  if (!outsideLabels.length) return discPct;
   const bleedMarginPx = Math.min(chartSize.w, chartSize.h) > 200 ? 10 : 2;
-  const labelRoomPx = Math.min(
-    roomXPx - PIE_LABEL_REACH_X_PX - bleedMarginPx - outsideLabelPx.w,
-    roomYPx - PIE_LABEL_REACH_Y_PX - outsideLabelPx.h / 2,
+  const sideRoomPx = roomXPx - PIE_LABEL_REACH_X_PX - bleedMarginPx;
+  const labelPctFor = (box: PixelBox) =>
+    Math.floor(
+      (Math.min(sideRoomPx - box.w, roomYPx - PIE_LABEL_REACH_Y_PX - box.h / 2) / halfShortSide) *
+        100,
+    );
+  const labelPct = Math.max(
+    labelPctFor(pieLabelBox(outsideLabels)),
+    sideRoomPx > 0
+      ? labelPctFor(pieLabelBox(outsideLabels, sideRoomPx * PIE_LABEL_WRAP_ROOM_SHARE))
+      : -Infinity,
   );
-  const labelPct = Math.floor((labelRoomPx / halfShortSide) * 100);
   return Math.min(discPct, Math.max(PIE_MIN_LABEL_FIT_RADIUS_PCT, labelPct));
 }
 
-function estimatePieOutsideLabelPx(
+type PieLabelText = { lineWidthsPx: number[]; lineHeightPx: number; padX: number; padY: number };
+
+function pieLabelBox(labels: PieLabelText[], maxTextWidthPx = Infinity): PixelBox {
+  const box: PixelBox = { w: 0, h: 0 };
+  for (const { lineWidthsPx, lineHeightPx, padX, padY } of labels) {
+    const lineCount = lineWidthsPx.reduce(
+      (sum, w) => sum + Math.max(1, Math.ceil(w / maxTextWidthPx)),
+      0,
+    );
+    box.w = Math.max(box.w, Math.min(maxTextWidthPx, Math.max(...lineWidthsPx)) + padX);
+    box.h = Math.max(box.h, lineCount * lineHeightPx + padY);
+  }
+  return box;
+}
+
+function estimatePieOutsideLabels(
   metas: {
     series: SeriesData;
     sharedLabels: DataLabelConfig | undefined;
     pointOverrides: Map<number, Partial<DataLabelConfig>>;
   }[],
   defaultFs: number | undefined,
-): PixelBox {
-  const box: PixelBox = { w: 0, h: 0 };
+): PieLabelText[] {
+  const labels: PieLabelText[] = [];
   for (const { series, sharedLabels, pointOverrides } of metas) {
     const total = series.values.reduce((sum, v) => sum + (v || 0), 0);
     series.categories.forEach((cat, i) => {
@@ -319,12 +342,15 @@ function estimatePieOutsideLabelPx(
       const fontSize = cfg.fontSize ?? defaultFs ?? 10;
       const widthFactor = cfg.bold ? BOLD_TEXT_WIDTH_FACTOR : 1;
       const [top, right, bottom, left] = cfg.padding ?? [0, 0, 0, 0];
-      const textW = Math.max(...lines.map((line) => estimateTextWidthPx(line, fontSize)));
-      box.w = Math.max(box.w, textW * widthFactor + left + right);
-      box.h = Math.max(box.h, lines.length * fontSize * PIE_LABEL_LINE_HEIGHT + top + bottom);
+      labels.push({
+        lineWidthsPx: lines.map((line) => estimateTextWidthPx(line, fontSize) * widthFactor),
+        lineHeightPx: fontSize * PIE_LABEL_LINE_HEIGHT,
+        padX: left + right,
+        padY: top + bottom,
+      });
     });
   }
-  return box;
+  return labels;
 }
 
 function pieExplosionToOffset(explosion: number, isDoughnut = false): number {
@@ -1469,7 +1495,7 @@ function buildPieChartOption(
     chartSize,
     explosionOffsetPx,
     titleBandPx,
-    estimatePieOutsideLabelPx(seriesLabelMeta, defaultFs),
+    estimatePieOutsideLabels(seriesLabelMeta, defaultFs),
   );
   const startAngle = mapFirstSliceAngle(chartTypeNode.child('firstSliceAng').numAttr('val'));
 
@@ -1501,15 +1527,13 @@ function buildPieChartOption(
         item.selected = true;
         item.selectedOffset = pieExplosionToOffset(meta.explosions[i], isDoughnut);
       }
-      if (override?.deleted) {
-        item.label = { show: false };
-      } else if (override && dataLabelShowsContent(pointLabel)) {
+      if (override) {
         item.label = buildPieLabelOption(
           pointLabel,
           meta.series.formatCode,
           meta.series.name,
           seriesTotal,
-        );
+        ) ?? { show: false };
       }
       return item;
     });
