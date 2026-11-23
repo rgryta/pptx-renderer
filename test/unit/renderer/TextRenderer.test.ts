@@ -2472,6 +2472,30 @@ describe('TextRenderer — renderTextBody', () => {
       ).toContain('Courier New');
     });
 
+    it('sizes a mixed paragraph strut by its smallest run and its bullet by the first run', () => {
+      const body = makeTextBody({
+        paragraphs: [
+          {
+            properties: xmlNode('<pPr><buSzPct val="50000"/><buChar char="•"/></pPr>'),
+            runs: [
+              { text: 'Heading', properties: xmlNode('<rPr sz="3600"/>') },
+              { text: '\n', properties: xmlNode('<rPr sz="1600"/>') },
+              { text: 'Body line', properties: xmlNode('<rPr sz="1600"/>') },
+            ],
+            level: 0,
+          },
+        ],
+      });
+
+      const paragraph = renderToContainer(body).firstElementChild as HTMLElement;
+      const bullet = Array.from(paragraph.querySelectorAll('span')).find((span) =>
+        span.textContent?.startsWith('•'),
+      );
+
+      expect(paragraph.style.fontSize).toBe('16pt');
+      expect(bullet?.style.fontSize).toBe('18pt');
+    });
+
     it('gives a text paragraph strut the font of its first visible run', () => {
       const body = makeTextBody({
         paragraphs: [

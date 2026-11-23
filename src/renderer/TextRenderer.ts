@@ -1502,9 +1502,10 @@ export function renderTextBody(
       }
       paraDiv.style.lineHeight = effectiveLineHeight!;
     }
-    const firstVisibleTextRun = paragraph.runs.find(
+    const visibleTextRuns = paragraph.runs.filter(
       (run) => run.text != null && run.text.length > 0 && run.text !== '\n' && run.text !== '\t',
     );
+    const firstVisibleTextRun = visibleTextRuns[0];
     const hasVisibleRuns = firstVisibleTextRun !== undefined;
 
     // Keep the paragraph strut aligned with visible text. A leading soft break
@@ -1521,9 +1522,18 @@ export function renderTextBody(
     }
     const effectiveFontSize = paragraphRunStyle.fontSize ?? 12;
     // Browser line boxes include a "strut" based on the block element's own font size.
-    // Keep the paragraph block in sync with Office's effective run size so tiny
-    // multi-paragraph labels do not inherit a 13px page font and overflow their boxes.
-    paraDiv.style.fontSize = `${effectiveFontSize * fontScale}pt`;
+    // Office sizes each line by its own runs, so the strut takes the smallest visible
+    // run size: no line grows past its runs, and tiny labels skip the page font.
+    const strutFontSize = hasVisibleRuns
+      ? Math.min(
+          ...visibleTextRuns.map((run) => {
+            const runStyle = getParagraphDefaultRunStyle(merged, ctx);
+            if (run.properties) mergeRunProps(runStyle, run.properties, ctx);
+            return runStyle.fontSize || 12;
+          }),
+        )
+      : effectiveFontSize;
+    paraDiv.style.fontSize = `${strutFontSize * fontScale}pt`;
     const paragraphFont = runCssFontFamily(
       paragraphRunProperties,
       paragraphRunStyle,
