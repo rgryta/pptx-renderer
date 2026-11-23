@@ -532,6 +532,7 @@ test('vertical explicit tabs advance on the inline axis while anchor center keep
       const markerRect = marker?.getBoundingClientRect();
       const measured = {
         targetCenterX: targetRect.left + targetRect.width / 2 - elementRect.left,
+        columnCenterX: paragraphRect.left + paragraphRect.width / 2 - elementRect.left,
         targetTop: targetRect.top - elementRect.top,
         paragraphWidth: paragraphRect.width,
         paragraphTop: paragraphRect.top - elementRect.top,
@@ -552,10 +553,10 @@ test('vertical explicit tabs advance on the inline axis while anchor center keep
 
   expect(result.withoutTab.writingMode).toBe('vertical-rl');
   expect(result.top.targetCenterX).toBeGreaterThan(550);
-  expect(result.withoutTab.targetCenterX).toBeCloseTo(300, 0);
+  expect(result.withoutTab.columnCenterX).toBeCloseTo(300, 0);
   expect(result.bottom.targetCenterX).toBeLessThan(50);
   expect(result.withoutTab.targetTop).toBeCloseTo(0, 0);
-  expect(result.withTab.targetCenterX).toBeCloseTo(300, 0);
+  expect(result.withTab.columnCenterX).toBeCloseTo(300, 0);
   expect(result.withTab.targetTop).toBeCloseTo(192, 0);
   expect(result.withTab.markerHeight).toBeCloseTo(192, 0);
   expect(result.withTab.paragraphTop).toBeCloseTo(0, 0);

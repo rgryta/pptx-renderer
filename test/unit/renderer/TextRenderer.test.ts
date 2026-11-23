@@ -2323,6 +2323,39 @@ describe('TextRenderer — renderTextBody', () => {
       ).toContain('Courier New');
     });
 
+    it('gives a text paragraph strut the font of its first visible run', () => {
+      const body = makeTextBody({
+        paragraphs: [
+          {
+            runs: [
+              { text: 'Visible', properties: xmlNode('<rPr><latin typeface="Tahoma"/></rPr>') },
+            ],
+            level: 0,
+          },
+        ],
+      });
+
+      const paragraph = renderToContainer(body).firstElementChild as HTMLElement;
+
+      expect(paragraph.style.fontFamily).toContain('Tahoma');
+    });
+
+    it('gives a table cell paragraph strut the table style font', () => {
+      const body = makeTextBody({ paragraphs: [{ runs: [{ text: 'Cell' }], level: 0 }] });
+      const container = document.createElement('div');
+      renderTextBody(body, undefined, createMockRenderContext(), container, {
+        cellTextFontFamily: 'Georgia',
+      });
+
+      expect((container.firstElementChild as HTMLElement).style.fontFamily).toContain('Georgia');
+    });
+
+    it('falls back to the theme minor font for a paragraph strut with no font in the chain', () => {
+      const paragraph = renderToContainer(makeTextBody()).firstElementChild as HTMLElement;
+
+      expect(paragraph.style.fontFamily).toContain('Calibri');
+    });
+
     it('ignores a leading soft break when resolving bullet color from visible text', () => {
       const body = makeTextBody({
         paragraphs: [
