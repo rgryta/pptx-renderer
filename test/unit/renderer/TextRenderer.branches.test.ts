@@ -454,7 +454,7 @@ describe('TextRenderer — branch coverage (uncovered paths)', () => {
       expect(span).not.toBeNull();
     });
 
-    it('applies font scale > 100% from normAutofit', () => {
+    it('clamps normAutofit font scale above 100% to 100%', () => {
       const body = makeTextBody({
         bodyPr: `<bodyPr><normAutofit fontScale="110000"/></bodyPr>`,
         paragraphs: [
@@ -471,8 +471,7 @@ describe('TextRenderer — branch coverage (uncovered paths)', () => {
       });
       const container = renderToContainer(body);
       const span = container.querySelector('span');
-      // 20pt * 1.1 = 22pt
-      expect(span!.style.fontSize).toBe('22pt');
+      expect(span!.style.fontSize).toBe('20pt');
     });
 
     it('applies font scale < 100% from normAutofit', () => {

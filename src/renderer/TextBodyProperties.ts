@@ -36,3 +36,9 @@ export function parseTextPercentage(value: string | undefined): number | undefin
   const number = Number(percent ? trimmed.slice(0, -1) : trimmed);
   return Number.isFinite(number) ? number / (percent ? 100 : 100000) : undefined;
 }
+
+/** Stored normAutofit@fontScale clamped to [0.25, 1]; missing, zero, negative or garbage = 1. */
+export function parseNormAutofitFontScale(normAutofit: SafeXmlNode | undefined): number {
+  const scale = parseTextPercentage(normAutofit?.attr('fontScale'));
+  return scale !== undefined && scale > 0 ? Math.min(1, Math.max(0.25, scale)) : 1;
+}

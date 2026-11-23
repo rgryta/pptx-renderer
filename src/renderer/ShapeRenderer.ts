@@ -142,7 +142,11 @@ import { applyTint, hexToRgb, rgbToHex } from '../utils/color';
 import { SafeXmlNode } from '../parser/XmlParser';
 import { findMediaByTarget, findMediaByTargetAsync, getOrCreateBlobUrl } from '../utils/media';
 import { isAllowedExternalMediaUrl, isAllowedExternalUrl } from '../utils/urlSafety';
-import { getEffectiveBodyPrChild, parseTextPercentage } from './TextBodyProperties';
+import {
+  getEffectiveBodyPrChild,
+  parseNormAutofitFontScale,
+  parseTextPercentage,
+} from './TextBodyProperties';
 import { cssFontFamilyStack, resolveThemeFontStack } from './fontResolver';
 import { resolveSlideNavigationIndex, slideJumpTitle } from './navigation';
 import { scaleCssLengthForTransform } from './cssValues';
@@ -3263,6 +3267,16 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
       };
 
       renderTextBody(textBody, node.placeholder, ctx, textContainer, textOptions);
+      const storedScaleNodes = [...textContainer.childNodes];
+      let fullScaleNodes: ChildNode[] | undefined;
+      if (hasNormAutofit && !isVerticalText && parseNormAutofitFontScale(normAutofit) < 1) {
+        const fullScaleBody = document.createElement('div');
+        renderTextBody(textBody, node.placeholder, ctx, fullScaleBody, {
+          ...textOptions,
+          fontScaleOverride: 1,
+        });
+        fullScaleNodes = [...fullScaleBody.childNodes];
+      }
       applyStaticShape3DTextPlane(textContainer, shape3dPlan);
       wrapper.appendChild(textContainer);
 
@@ -3277,6 +3291,7 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
         const baseHeight = textContainer.style.height;
         const baseWhiteSpace = textContainer.style.whiteSpace;
         const baseOverflowY = textContainer.style.overflowY;
+        const baseLineHeight = textContainer.style.lineHeight;
         const baseSvgWidth = mainSvg?.getAttribute('width') ?? null;
         const baseSvgHeight = mainSvg?.getAttribute('height') ?? null;
         const baseSvgPreserveAspectRatio = mainSvg?.getAttribute('preserveAspectRatio') ?? null;
@@ -3317,6 +3332,19 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
           const savedJC = textContainer.style.justifyContent;
           const savedWhiteSpace = textContainer.style.whiteSpace;
           textContainer.style.justifyContent = 'flex-start';
+          if (fullScaleNodes) {
+            textContainer.replaceChildren(...fullScaleNodes);
+            textContainer.style.lineHeight = '';
+            const fullScaleFits =
+              textContainer.clientHeight > 0 &&
+              textContainer.scrollHeight <= textContainer.clientHeight &&
+              textContainer.scrollWidth <=
+                textContainer.clientWidth + WRAPPED_AUTOFIT_WIDTH_TOLERANCE_PX;
+            if (!fullScaleFits) {
+              textContainer.replaceChildren(...storedScaleNodes);
+              textContainer.style.lineHeight = baseLineHeight;
+            }
+          }
           const containerW = textContainer.clientWidth;
           const containerH = textContainer.clientHeight;
           const wrappedContentH = textContainer.scrollHeight;
@@ -3332,6 +3360,7 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
             containerH > 0 &&
             (wrappedContentH <= containerH ||
               (!spAutoFitAllowsVerticalOverflow &&
+                !hasNormAutofit &&
                 wrappedWidthFits &&
                 wrappedContentH <= containerH * wrappedHeightTolerance));
           const wrappedFits =

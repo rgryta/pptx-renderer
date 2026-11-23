@@ -19,7 +19,11 @@ import { parseOoxmlBool } from '../parser/booleans';
 import { isExternalTargetMode } from '../parser/RelParser';
 import { isAllowedExternalMediaUrl, isAllowedExternalUrl } from '../utils/urlSafety';
 import { findMediaByTarget, findMediaByTargetAsync, getOrCreateBlobUrl } from '../utils/media';
-import { getEffectiveBodyPrChild, parseTextPercentage } from './TextBodyProperties';
+import {
+  getEffectiveBodyPrChild,
+  parseNormAutofitFontScale,
+  parseTextPercentage,
+} from './TextBodyProperties';
 import { cssFontFamilyStack, resolveThemeFontStack } from './fontResolver';
 import { resolveSlideNavigationIndex, slideJumpTitle } from './navigation';
 import { renderMathFormula } from './MathRenderer';
@@ -1261,6 +1265,8 @@ interface RenderTextBodyOptions {
   trimOuterParagraphSpacing?: boolean;
   /** Treat absolute line spacing as inter-line spacing for a single-line paragraph. */
   compactSingleLineSpacing?: boolean;
+  /** Replaces the stored normAutofit fontScale and drops its lnSpcReduction. */
+  fontScaleOverride?: number;
 }
 
 export function resolveTextFields(textBody: TextBody, ctx: RenderContext): TextBody {
@@ -1312,9 +1318,10 @@ export function renderTextBody(
   let fontScale = 1;
   let lnSpcReduction = 0;
   const normAutofit = getEffectiveBodyPrChild(textBody, 'normAutofit');
-  if (normAutofit?.exists()) {
-    const fs = parseTextPercentage(normAutofit.attr('fontScale'));
-    if (fs !== undefined) fontScale = fs; // 100000 = 100%
+  if (options?.fontScaleOverride !== undefined) {
+    fontScale = options.fontScaleOverride;
+  } else if (normAutofit?.exists()) {
+    fontScale = parseNormAutofitFontScale(normAutofit);
     const lsr = parseTextPercentage(normAutofit.attr('lnSpcReduction'));
     if (lsr !== undefined) lnSpcReduction = lsr; // e.g., 20000 = 20%
   }
