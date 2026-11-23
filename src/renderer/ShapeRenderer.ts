@@ -314,6 +314,8 @@ const WRAPPED_AUTOFIT_HEIGHT_TOLERANCE = 1.1;
 // metric overhang; allow a larger margin without applying one-line shrink.
 const SINGLE_PARAGRAPH_WRAPPED_AUTOFIT_HEIGHT_TOLERANCE = 1.25;
 const WRAPPED_AUTOFIT_WIDTH_TOLERANCE_PX = 1;
+// A stored normAutofit scale this far below the measured fit is stale, not a metric difference.
+const STALE_NORM_AUTOFIT_SCALE_MARGIN = 0.1;
 const NO_AUTOFIT_TITLE_METRIC_SCALE_FLOOR = 0.9;
 const SP_AUTOFIT_UNWRAPPED_WIDTH_SCALE_FLOOR = 0.9;
 const NEAR_FIT_SINGLE_LINE_WRAP_SCALE_FLOOR = 0.98;
@@ -3268,8 +3270,9 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
 
       renderTextBody(textBody, node.placeholder, ctx, textContainer, textOptions);
       const storedScaleNodes = [...textContainer.childNodes];
+      const storedFontScale = parseNormAutofitFontScale(normAutofit);
       let fullScaleNodes: ChildNode[] | undefined;
-      if (hasNormAutofit && !isVerticalText && parseNormAutofitFontScale(normAutofit) < 1) {
+      if (hasNormAutofit && !isVerticalText && storedFontScale < 1) {
         const fullScaleBody = document.createElement('div');
         renderTextBody(textBody, node.placeholder, ctx, fullScaleBody, {
           ...textOptions,
@@ -3295,6 +3298,25 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
         const baseSvgWidth = mainSvg?.getAttribute('width') ?? null;
         const baseSvgHeight = mainSvg?.getAttribute('height') ?? null;
         const baseSvgPreserveAspectRatio = mainSvg?.getAttribute('preserveAspectRatio') ?? null;
+        const usesVisibleTextHeight = hasNormAutofit && !isVerticalText;
+        // Trailing empty paragraphs may overflow unseen, so the fit ends at the last visible text.
+        const measureContentHeight = () => {
+          if (usesVisibleTextHeight) {
+            const paragraphs = Array.from(textContainer.children) as HTMLElement[];
+            for (let index = paragraphs.length - 1; index >= 0; index--) {
+              const paragraph = paragraphs[index];
+              if (paragraph.textContent?.trim() || paragraph.querySelector('img, svg')) {
+                if (index === paragraphs.length - 1) break;
+                return (
+                  paragraph.offsetTop +
+                  paragraph.offsetHeight +
+                  (parseFloat(textContainer.style.paddingBottom) || 0)
+                );
+              }
+            }
+          }
+          return textContainer.scrollHeight;
+        };
         const applyDynamicAutofit = () => {
           wrapper.style.width = baseWrapperWidth;
           wrapper.style.height = baseWrapperHeight;
@@ -3332,22 +3354,56 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
           const savedJC = textContainer.style.justifyContent;
           const savedWhiteSpace = textContainer.style.whiteSpace;
           textContainer.style.justifyContent = 'flex-start';
+          let fullScaleFit: number | undefined;
           if (fullScaleNodes) {
-            textContainer.replaceChildren(...fullScaleNodes);
-            textContainer.style.lineHeight = '';
-            const fullScaleFits =
-              textContainer.clientHeight > 0 &&
-              textContainer.scrollHeight <= textContainer.clientHeight &&
-              textContainer.scrollWidth <=
-                textContainer.clientWidth + WRAPPED_AUTOFIT_WIDTH_TOLERANCE_PX;
-            if (!fullScaleFits) {
-              textContainer.replaceChildren(...storedScaleNodes);
-              textContainer.style.lineHeight = baseLineHeight;
+            const useFullScale = (full: boolean) => {
+              textContainer.replaceChildren(...(full ? fullScaleNodes : storedScaleNodes));
+              textContainer.style.lineHeight = full ? '' : baseLineHeight;
+            };
+            const fitsAtScale = (fitScale: number) => {
+              if (fitScale < 1) {
+                textContainer.style.width = expandCssLengthForScale(baseWidth, fitScale);
+                textContainer.style.height = expandCssLengthForScale(baseHeight, fitScale);
+              }
+              const fits =
+                textContainer.clientHeight > 0 &&
+                measureContentHeight() <= textContainer.clientHeight &&
+                textContainer.scrollWidth <=
+                  textContainer.clientWidth + WRAPPED_AUTOFIT_WIDTH_TOLERANCE_PX;
+              textContainer.style.width = baseWidth;
+              textContainer.style.height = baseHeight;
+              return fits;
+            };
+            useFullScale(true);
+            if (!fitsAtScale(1)) {
+              let largestFit: number | undefined;
+              if (fitsAtScale(storedFontScale)) {
+                let fitting = storedFontScale;
+                let overflowing = 1;
+                for (let step = 0; step < 6; step++) {
+                  const middle = (fitting + overflowing) / 2;
+                  if (fitsAtScale(middle)) fitting = middle;
+                  else overflowing = middle;
+                }
+                largestFit = fitting;
+              }
+              if (
+                largestFit !== undefined &&
+                largestFit >= storedFontScale + STALE_NORM_AUTOFIT_SCALE_MARGIN
+              ) {
+                fullScaleFit = largestFit;
+              } else {
+                useFullScale(false);
+                if (largestFit !== undefined && !fitsAtScale(1)) {
+                  useFullScale(true);
+                  fullScaleFit = largestFit;
+                }
+              }
             }
           }
           const containerW = textContainer.clientWidth;
           const containerH = textContainer.clientHeight;
-          const wrappedContentH = textContainer.scrollHeight;
+          const wrappedContentH = measureContentHeight();
           const wrappedContentW = textContainer.scrollWidth;
           let contentW = wrappedContentW;
           let contentH = wrappedContentH;
@@ -3515,6 +3571,16 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
             containerH > 0
           ) {
             scale = containerH / wrappedContentH;
+          }
+          if (fullScaleFit !== undefined) scale = fullScaleFit;
+          if (
+            usesVisibleTextHeight &&
+            containerH > 0 &&
+            (textContainer.style.justifyContent === 'center' ||
+              textContainer.style.justifyContent === 'flex-end')
+          ) {
+            // Overflowing trailing empty paragraphs must not push visible text above the box.
+            textContainer.style.justifyContent = `safe ${textContainer.style.justifyContent}`;
           }
           if (scale < 1) {
             if (!textContainer.style.transform) {
