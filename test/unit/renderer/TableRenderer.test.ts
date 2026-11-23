@@ -397,21 +397,26 @@ describe('renderTable', () => {
     expect(td.style.borderBottom).not.toBe('');
   });
 
-  it('uses percentage row heights', () => {
+  describe('row heights', () => {
     const rows: TableRow[] = [
-      {
-        height: 100,
-        cells: [{ gridSpan: 1, rowSpan: 1, hMerge: false, vMerge: false }],
-      },
-      {
-        height: 300,
-        cells: [{ gridSpan: 1, rowSpan: 1, hMerge: false, vMerge: false }],
-      },
+      { height: 100, cells: [{ gridSpan: 1, rowSpan: 1, hMerge: false, vMerge: false }] },
+      { height: 0, cells: [{ gridSpan: 1, rowSpan: 1, hMerge: false, vMerge: false }] },
+      { height: 300, cells: [{ gridSpan: 1, rowSpan: 1, hMerge: false, vMerge: false }] },
     ];
-    const el = renderTable(makeTable({ columns: [400], rows }), makeCtx());
-    const trs = el.querySelectorAll('tr');
-    expect(trs[0].style.height).toBe('25%');
-    expect(trs[1].style.height).toBe('75%');
+    const heights = (h: number) => {
+      const node = makeTable({ columns: [400], rows });
+      node.size = { w: 400, h };
+      return [...renderTable(node, makeCtx()).querySelectorAll('tr')].map((tr) => tr.style.height);
+    };
+
+    it('sets each row height in px from its own height', () => {
+      expect(heights(400)).toEqual(['100px', '', '300px']);
+    });
+
+    it('scales px row heights to a group-remapped table height', () => {
+      expect(heights(200)).toEqual(['50px', '', '150px']);
+      expect(heights(800)).toEqual(['200px', '', '600px']);
+    });
   });
 
   describe('table style sections', () => {

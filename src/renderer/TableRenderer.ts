@@ -524,10 +524,9 @@ export function renderTable(node: TableNodeData, ctx: RenderContext): HTMLElemen
   for (let rowIdx = 0; rowIdx < node.rows.length; rowIdx++) {
     const row = node.rows[rowIdx];
     const tr = document.createElement('tr');
-    if (row.height > 0 && totalRowHeight > 0) {
-      // Use percentage heights so rows stay proportional within the
-      // table's constrained height instead of expanding beyond it.
-      tr.style.height = `${(row.height / totalRowHeight) * 100}%`;
+    if (row.height > 0) {
+      // Pixel rows: Gecko spreads percentage rows in a percentage-height table unevenly.
+      tr.style.height = `${(row.height * node.size.h) / totalRowHeight}px`;
     }
 
     colIdx = 0;
