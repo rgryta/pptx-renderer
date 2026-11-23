@@ -3276,15 +3276,21 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
       renderTextBody(textBody, node.placeholder, ctx, textContainer, textOptions);
       const storedScaleNodes = [...textContainer.childNodes];
       const storedFontScale = parseNormAutofitFontScale(normAutofit);
-      let fullScaleNodes: ChildNode[] | undefined;
-      if (hasNormAutofit && !isVerticalText && storedFontScale < 1) {
-        const fullScaleBody = document.createElement('div');
-        renderTextBody(textBody, node.placeholder, ctx, fullScaleBody, {
-          ...textOptions,
-          fontScaleOverride: 1,
-        });
-        fullScaleNodes = [...fullScaleBody.childNodes];
-      }
+      const fitsStaleFontScale = hasNormAutofit && !isVerticalText && storedFontScale < 1;
+      const nodesByFontScale = new Map<number, ChildNode[]>();
+      const nodesAtFontScale = (fontScale: number) => {
+        let nodes = nodesByFontScale.get(fontScale);
+        if (!nodes) {
+          const scaledBody = document.createElement('div');
+          renderTextBody(textBody, node.placeholder, ctx, scaledBody, {
+            ...textOptions,
+            fontScaleOverride: fontScale,
+          });
+          nodes = [...scaledBody.childNodes];
+          nodesByFontScale.set(fontScale, nodes);
+        }
+        return nodes;
+      };
       applyStaticShape3DTextPlane(textContainer, shape3dPlan);
       wrapper.appendChild(textContainer);
 
@@ -3361,51 +3367,40 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
           const savedJC = textContainer.style.justifyContent;
           const savedWhiteSpace = textContainer.style.whiteSpace;
           textContainer.style.justifyContent = 'flex-start';
-          let fullScaleFit: number | undefined;
-          if (fullScaleNodes) {
-            const useFullScale = (full: boolean) => {
-              textContainer.replaceChildren(...(full ? fullScaleNodes : storedScaleNodes));
-              textContainer.style.lineHeight = full ? '' : baseLineHeight;
+          if (fitsStaleFontScale) {
+            const useNodes = (nodes: ChildNode[], lineHeight: string) => {
+              textContainer.replaceChildren(...nodes);
+              textContainer.style.lineHeight = lineHeight;
             };
-            const fitsAtScale = (fitScale: number) => {
-              if (fitScale < 1) {
-                textContainer.style.width = expandCssLengthForScale(baseWidth, fitScale);
-                textContainer.style.height = expandCssLengthForScale(baseHeight, fitScale);
-              }
-              const fits =
-                textContainer.clientHeight > 0 &&
-                measureContentHeight() <= textContainer.clientHeight &&
-                textContainer.scrollWidth <=
-                  textContainer.clientWidth + WRAPPED_AUTOFIT_WIDTH_TOLERANCE_PX;
-              textContainer.style.width = baseWidth;
-              textContainer.style.height = baseHeight;
-              return fits;
+            const fits = () =>
+              textContainer.clientHeight > 0 &&
+              measureContentHeight() <= textContainer.clientHeight &&
+              textContainer.scrollWidth <=
+                textContainer.clientWidth + WRAPPED_AUTOFIT_WIDTH_TOLERANCE_PX;
+            const fitsAtFontScale = (fontScale: number) => {
+              useNodes(nodesAtFontScale(fontScale), '');
+              return fits();
             };
-            useFullScale(true);
-            if (!fitsAtScale(1)) {
-              let largestFit: number | undefined;
-              if (fitsAtScale(storedFontScale)) {
-                let fitting = storedFontScale;
-                let overflowing = 1;
-                for (let step = 0; step < 6; step++) {
-                  const middle = (fitting + overflowing) / 2;
-                  if (fitsAtScale(middle)) fitting = middle;
-                  else overflowing = middle;
-                }
-                largestFit = fitting;
+            let largestFit: number | undefined = fitsAtFontScale(1) ? 1 : undefined;
+            if (largestFit === undefined && fitsAtFontScale(storedFontScale)) {
+              let fitting = storedFontScale;
+              let overflowing = 1;
+              for (let step = 0; step < 6; step++) {
+                const middle = (fitting + overflowing) / 2;
+                if (fitsAtFontScale(middle)) fitting = middle;
+                else overflowing = middle;
               }
-              if (
-                largestFit !== undefined &&
-                largestFit >= storedFontScale + STALE_NORM_AUTOFIT_SCALE_MARGIN
-              ) {
-                fullScaleFit = largestFit;
-              } else {
-                useFullScale(false);
-                if (largestFit !== undefined && !fitsAtScale(1)) {
-                  useFullScale(true);
-                  fullScaleFit = largestFit;
-                }
-              }
+              largestFit = fitting;
+            }
+            if (
+              largestFit === 1 ||
+              (largestFit !== undefined &&
+                largestFit >= storedFontScale + STALE_NORM_AUTOFIT_SCALE_MARGIN)
+            ) {
+              useNodes(nodesAtFontScale(largestFit), '');
+            } else {
+              useNodes(storedScaleNodes, baseLineHeight);
+              if (largestFit !== undefined && !fits()) useNodes(nodesAtFontScale(largestFit), '');
             }
           }
           const containerW = textContainer.clientWidth;
@@ -3595,7 +3590,6 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
           ) {
             scale = containerH / wrappedContentH;
           }
-          if (fullScaleFit !== undefined) scale = fullScaleFit;
           if (
             usesVisibleTextHeight &&
             containerH > 0 &&
