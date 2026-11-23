@@ -116,4 +116,40 @@ describe('chart format helpers', () => {
     expect(formatValue(1234567, officeFormat)).toBe('1,234,567');
     expect(formatValue(-1234567, officeFormat)).toBe('(1,234,567)');
   });
+
+  it.each([
+    [75, '"$"#,##0', '$75'],
+    [75, '_-"$"* #,##0_-', '$75'],
+    [0, '_-"$"* #,##0_-;-"$"* #,##0_-;_-"$"* "-"??_-', '$-'],
+    [1.5, '"$"0.00', '$1.50'],
+    [12.3, '0.0"%"', '12.3%'],
+    [1500, '#,##0,"K"', '2K'],
+    [1500000, '0.0,,"M"', '1.5M'],
+    [-1234, '#,##0;(#,##0)', '(1,234)'],
+    [-1234, '#,##0;-#,##0', '-1,234'],
+    [1234.5, '#,##0.00', '1,234.50'],
+    [-75, '"$"#,##0', '-$75'],
+    [0, '#,##0;(#,##0);"-"', '-'],
+    [75, '[$€-407]#,##0', '€75'],
+    [75, '[$-409]#,##0', '75'],
+    [75, '0\\x', '75x'],
+    [0.125, '+0.0%;-0.0%', '+12.5%'],
+    [-0.125, '0.0%;(0.0%)', '(12.5%)'],
+  ])('keeps literal text: %s with %s gives %s', (value, code, want) => {
+    expect(formatValue(value, code)).toBe(want);
+  });
+
+  it('clamps placeholder counts instead of throwing', () => {
+    expect(formatValue(1, `0.${'0'.repeat(101)}`)).toBe(`1.${'0'.repeat(20)}`);
+    expect(() => formatValue(1, '0'.repeat(101))).not.toThrow();
+  });
+
+  it.each([
+    [1234, '[>=1000]#,##0,"K";0', '1234'],
+    [1234, '0.00E+00', '1234'],
+    [0.5, '# ?/?', '0.5'],
+    [61, 'm/d/yyyy', '61'],
+  ])('leaves %s with %s on the fallback path', (value, code, want) => {
+    expect(formatValue(value, code)).toBe(want);
+  });
 });
