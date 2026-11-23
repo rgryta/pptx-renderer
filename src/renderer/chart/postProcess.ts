@@ -23,6 +23,7 @@ export interface ChartPixelSize {
 }
 
 const BOTTOM_LEGEND_GAP_PX = 4;
+const UNSIZED_CHART_TITLE_SCALE = 1.2;
 
 function getRadarNameTextStyles(option: echarts.EChartsOption): Record<string, unknown>[] {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -51,11 +52,8 @@ export function applyDefaultFontSizes(option: echarts.EChartsOption, defaultFs: 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const opt = option as any;
 
-  if (opt.title?.textStyle?.fontSize) {
-    const cur = opt.title.textStyle.fontSize;
-    if (cur <= 14 && !hasExplicitFontSize(opt.title.textStyle)) {
-      opt.title.textStyle.fontSize = defaultFs;
-    }
+  if (opt.title?.textStyle && !hasExplicitFontSize(opt.title.textStyle)) {
+    opt.title.textStyle.fontSize = Number((defaultFs * UNSIZED_CHART_TITLE_SCALE).toFixed(2));
   }
 
   for (const textStyle of getRadarNameTextStyles(option)) {
@@ -126,8 +124,22 @@ export function applyDefaultFontFamily(option: echarts.EChartsOption, fontFamily
   const yAxes = Array.isArray(opt.yAxis) ? opt.yAxis : opt.yAxis ? [opt.yAxis] : [];
   for (const axis of [...xAxes, ...yAxes]) applyAxisFontFamily(axis);
 
+  for (const axis of [...xAxes, ...yAxes]) {
+    if (axis?.name && !axis.nameTextStyle?.fontFamily) {
+      axis.nameTextStyle = { ...axis.nameTextStyle, fontFamily };
+    }
+  }
+
   if (opt.legend?.textStyle && !opt.legend.textStyle.fontFamily) {
     opt.legend.textStyle.fontFamily = fontFamily;
+  }
+
+  const seriesArr = Array.isArray(opt.series) ? opt.series : opt.series ? [opt.series] : [];
+  for (const s of seriesArr) {
+    const points = Array.isArray(s?.data) ? s.data : [];
+    for (const label of [s?.label, ...points.map((d: { label?: unknown }) => d?.label)]) {
+      if (label && label.show !== false && !label.fontFamily) label.fontFamily = fontFamily;
+    }
   }
 
   for (const textStyle of getRadarNameTextStyles(option)) {

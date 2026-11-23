@@ -156,9 +156,9 @@ const BOLD_TEXT_WIDTH_FACTOR = 1.1;
 function reservePieTitleBand(
   titleOption: EChartsTypes.EChartsOption['title'],
   chartNode: SafeXmlNode,
-  ctx: RenderContext,
   chartSize: ChartPixelSize | undefined,
   defaultFs: number | undefined,
+  chartFontFamily: string | undefined,
 ): number {
   if (!titleOption || Array.isArray(titleOption)) return 0;
   if (!chartSize || !(chartSize.w > 0) || !(chartSize.h > 0)) return 0;
@@ -169,8 +169,7 @@ function reservePieTitleBand(
     title: { textStyle: { ...titleOption.textStyle } },
   };
   if (defaultFs) applyDefaultFontSizes(finalTitle, defaultFs);
-  const themeFontFamily = getChartThemeFontFamily(ctx);
-  if (themeFontFamily) applyDefaultFontFamily(finalTitle, themeFontFamily);
+  if (chartFontFamily) applyDefaultFontFamily(finalTitle, chartFontFamily);
   const finalStyle = (
     finalTitle.title as { textStyle: EChartsTypes.TitleComponentOption['textStyle'] }
   ).textStyle;
@@ -1335,6 +1334,7 @@ function buildPieChartOption(
   ctx: RenderContext,
   chartSize?: ChartPixelSize,
   defaultFs?: number,
+  chartFontFamily?: string,
 ): EChartsTypes.EChartsOption {
   const titleOption = buildChartTitleOption(chartNode, seriesArr, ctx, 12);
   const legendInfo = extractLegendInfo(chartNode, ctx);
@@ -1393,7 +1393,13 @@ function buildPieChartOption(
       (meta.explosions ?? []).map((explosion) => pieExplosionToOffset(explosion, isDoughnut)),
     ),
   );
-  const titleBandPx = reservePieTitleBand(titleOption, chartNode, ctx, chartSize, defaultFs);
+  const titleBandPx = reservePieTitleBand(
+    titleOption,
+    chartNode,
+    chartSize,
+    defaultFs,
+    chartFontFamily,
+  );
   const pieLayout = computePieLayout(
     legendInfo,
     isDoughnut,
@@ -2326,6 +2332,7 @@ function buildOptionForChartType(
   chartPalette?: string[],
   chartSize?: ChartPixelSize,
   defaultFs?: number,
+  chartFontFamily?: string,
 ): EChartsTypes.EChartsOption | undefined {
   switch (typeName) {
     case 'barChart':
@@ -2348,6 +2355,7 @@ function buildOptionForChartType(
         ctx,
         chartSize,
         defaultFs,
+        chartFontFamily,
       );
     case 'doughnutChart':
       return buildPieChartOption(
@@ -2358,6 +2366,7 @@ function buildOptionForChartType(
         ctx,
         chartSize,
         defaultFs,
+        chartFontFamily,
       );
     case 'radarChart':
       return buildRadarChartOption(
@@ -2606,6 +2615,7 @@ export function parseChartXml(
   const chartTypeEntries = entriesWithSeries.length > 0 ? entriesWithSeries : knownTypeEntries;
 
   const defaultFs = extractChartDefaultFontSize(chartXml);
+  const defaultFontFamily = getChartThemeFontFamily(chartCtx, chartXml);
   for (const [index, entry] of chartTypeEntries.entries()) {
     let option = buildOptionForChartType(
       entry.typeName,
@@ -2616,6 +2626,7 @@ export function parseChartXml(
       chartPalette,
       chartSize,
       defaultFs,
+      defaultFontFamily,
     );
     if (!option) continue;
 
@@ -2631,6 +2642,7 @@ export function parseChartXml(
           chartPalette,
           chartSize,
           defaultFs,
+          defaultFontFamily,
         );
         if (!comboOption) continue;
         option = mergeCartesianComboOptions(
@@ -2646,7 +2658,6 @@ export function parseChartXml(
     if (defaultFs) {
       applyDefaultFontSizes(option, defaultFs);
     }
-    const defaultFontFamily = getChartThemeFontFamily(chartCtx);
     if (defaultFontFamily) {
       applyDefaultFontFamily(option, defaultFontFamily);
     }
