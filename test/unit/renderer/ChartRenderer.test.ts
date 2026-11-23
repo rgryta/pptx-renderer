@@ -4575,6 +4575,74 @@ describe('ChartRenderer', () => {
       const series = (parseChartOption(xml).option.series as any[])[0];
       expect(series.label.formatter({ name: 'C0', value: 0.456, percent: 45.6 })).toBe('46%');
     });
+
+    describe('pie percent labels', () => {
+      const pieWith = (dLbls: string, values: number[], cacheFormatCode?: string) =>
+        (
+          parseChartOption(
+            buildLabelChartXml({ chartType: 'pieChart', serDLbls: dLbls, values, cacheFormatCode }),
+          ).option.series as any[]
+        )[0];
+      const percentOnly = (numFmt = '') =>
+        `<c:dLbls>${numFmt}<c:showVal val="0"/><c:showPercent val="1"/></c:dLbls>`;
+
+      it.each([
+        ['0%', [61.69, 38.31], '62%'],
+        ['0.0%', [61.69, 38.31], '61.7%'],
+        ['0%', [14.5, 85.5], '15%'],
+      ])('formats the share with label numFmt %s from the series values', (code, values, want) => {
+        const series = pieWith(
+          percentOnly(`<c:numFmt formatCode="${code}" sourceLinked="0"/>`),
+          values,
+        );
+        expect(series.label.formatter({ name: 'C0', value: values[0], percent: 99 })).toBe(want);
+      });
+
+      it('uses 0% without a label numFmt', () => {
+        const series = pieWith(percentOnly(), [61.69, 38.31]);
+        expect(series.label.formatter({ name: 'C0', value: 61.69, percent: 61.69 })).toBe('62%');
+      });
+
+      it('uses 0% when the label numFmt is source-linked', () => {
+        const series = pieWith(
+          percentOnly('<c:numFmt formatCode="0.00" sourceLinked="1"/>'),
+          [61.69, 38.31],
+          '0.00',
+        );
+        expect(series.label.formatter({ name: 'C0', value: 61.69, percent: 61.69 })).toBe('62%');
+      });
+
+      it('formats the value with the series format and the share with the label percent format', () => {
+        const series = pieWith(
+          `<c:dLbls>
+            <c:numFmt formatCode="0%" sourceLinked="0"/>
+            <c:showVal val="1"/><c:showPercent val="1"/>
+          </c:dLbls>`,
+          [61.69, 38.31],
+          '0.00',
+        );
+        expect(series.label.formatter({ name: 'C0', value: 61.69, percent: 61.69 })).toBe(
+          '61.69 62%',
+        );
+      });
+
+      it('gives per-point labels the chart-level default size', () => {
+        const xml = buildLabelChartXml({
+          chartType: 'pieChart',
+          serDLbls: `<c:dLbls>
+            <c:dLbl><c:idx val="1"/><c:showCatName val="1"/><c:showPercent val="1"/></c:dLbl>
+            <c:showPercent val="1"/>
+          </c:dLbls>`,
+          values: [60, 40],
+        }).replace(
+          '</c:chart>',
+          '</c:chart><c:txPr><a:bodyPr/><a:p><a:pPr><a:defRPr sz="1400"/></a:pPr></a:p></c:txPr>',
+        );
+        const series = (parseChartOption(xml).option.series as any[])[0];
+        expect(series.label.fontSize).toBe(19);
+        expect(series.data[1].label.fontSize).toBe(19);
+      });
+    });
   });
 
   describe('python-pptx LINE_MARKERS chart with a bottom legend', () => {
@@ -5077,11 +5145,9 @@ describe('ChartRenderer', () => {
       // Label formatter should be a function (not a string) because fc contains '%'
       const formatter = series?.label?.formatter;
       expect(typeof formatter).toBe('function');
-      // Invoke: showCatName → name, showVal with % format → "45.0%", showPercent → "50%"
-      const result = formatter({ name: 'East', value: 0.45, percent: 50 });
-      expect(result).toContain('East');
-      expect(result).toContain('45.0%');
-      expect(result).toContain('50%');
+      // Invoke: showCatName → name, showVal with % format → "45.0%", showPercent → "45%"
+      const result = formatter({ name: 'East', value: 0.45, percent: 45 });
+      expect(result).toBe('East 45.0% 45%');
     });
   });
 
