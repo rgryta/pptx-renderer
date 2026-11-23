@@ -71,9 +71,14 @@ export function applyDefaultFontSizes(option: echarts.EChartsOption, defaultFs: 
   }
 
   const seriesArr = Array.isArray(opt.series) ? opt.series : opt.series ? [opt.series] : [];
+  const labels = [];
   for (const s of seriesArr) {
-    if (s?.label?.fontSize && (s.label.fontSize as number) <= 10 && !hasExplicitFontSize(s.label)) {
-      s.label.fontSize = defaultFs;
+    labels.push(s?.label);
+    if (Array.isArray(s?.data)) labels.push(...s.data.map((d: { label?: unknown }) => d?.label));
+  }
+  for (const label of labels) {
+    if (label?.fontSize && (label.fontSize as number) <= 10 && !hasExplicitFontSize(label)) {
+      label.fontSize = defaultFs;
     }
   }
 

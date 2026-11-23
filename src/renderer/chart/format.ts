@@ -195,7 +195,7 @@ export function formatValue(value: number, formatCode: string | undefined): stri
   if (formatCode.includes('%')) {
     const match = formatCode.match(/0\.(0+)%/);
     const decimals = match ? match[1].length : 0;
-    const pctValue = value * 100;
+    const pctValue = parseFloat((value * 100).toPrecision(12));
     return `${pctValue.toFixed(decimals)}%`;
   }
 

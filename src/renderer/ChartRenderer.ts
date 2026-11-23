@@ -620,9 +620,16 @@ function buildPieLabelOption(
   cfg: DataLabelConfig | undefined,
   formatCode: string | undefined,
   seriesName: string,
+  seriesTotal: number,
 ): Record<string, unknown> | undefined {
   if (!cfg || !dataLabelShowsContent(cfg)) return undefined;
   const labelCfg = cfg;
+  const percentCode =
+    typeof labelCfg.formatCode === 'string' && labelCfg.formatCode.includes('%')
+      ? labelCfg.formatCode
+      : undefined;
+  const valueCode =
+    labelCfg.showPercent && percentCode ? formatCode : (labelCfg.formatCode ?? formatCode);
   const label = {
     show: true,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -631,9 +638,12 @@ function buildPieLabelOption(
       if (labelCfg.showSerName && seriesName) parts.push(seriesName);
       if (labelCfg.showCatName) parts.push(params.name);
       if (labelCfg.showVal) {
-        parts.push(formatValue(params.value, labelCfg.formatCode ?? formatCode));
+        parts.push(formatValue(params.value, valueCode));
       }
-      if (labelCfg.showPercent) parts.push(`${params.percent}%`);
+      if (labelCfg.showPercent) {
+        const share = seriesTotal ? params.value / seriesTotal : 0;
+        parts.push(formatValue(share, percentCode ?? '0%'));
+      }
       return parts.join(' ');
     },
     fontSize: labelCfg.fontSize ?? 10,
@@ -1329,6 +1339,7 @@ function buildPieChartOption(
   const startAngle = mapFirstSliceAngle(chartTypeNode.child('firstSliceAng').numAttr('val'));
 
   const series: EChartsTypes.PieSeriesOption[] = seriesLabelMeta.map((meta, idx) => {
+    const seriesTotal = meta.series.values.reduce((sum, v) => sum + (v || 0), 0);
     const manualLayouts = new Map<number, DataLabelManualLayout>();
     const pieData = meta.series.categories.map((cat, i) => {
       const override = meta.pointOverrides.get(i);
@@ -1358,12 +1369,22 @@ function buildPieChartOption(
       if (override?.deleted) {
         item.label = { show: false };
       } else if (override && dataLabelShowsContent(pointLabel)) {
-        item.label = buildPieLabelOption(pointLabel, meta.series.formatCode, meta.series.name);
+        item.label = buildPieLabelOption(
+          pointLabel,
+          meta.series.formatCode,
+          meta.series.name,
+          seriesTotal,
+        );
       }
       return item;
     });
 
-    const label = buildPieLabelOption(meta.sharedLabels, meta.series.formatCode, meta.series.name);
+    const label = buildPieLabelOption(
+      meta.sharedLabels,
+      meta.series.formatCode,
+      meta.series.name,
+      seriesTotal,
+    );
     const hasLeaderLines =
       Boolean(meta.sharedLabels?.showLeaderLines) ||
       [...meta.pointOverrides.values()].some((cfg) => cfg.showLeaderLines === true);
