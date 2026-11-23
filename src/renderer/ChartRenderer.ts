@@ -869,6 +869,7 @@ function buildBarChartOption(
   seriesArr: SeriesData[],
   ctx: RenderContext,
   defaultFs?: number,
+  chartPalette?: string[],
 ): EChartsTypes.EChartsOption {
   const barDir = chartTypeNode.child('barDir').attr('val') || chartTypeNode.attr('barDir') || 'col';
   const grouping = chartGrouping(chartTypeNode);
@@ -916,6 +917,15 @@ function buildBarChartOption(
     .map((ser, i) => ({ ser, order: ser.child('order').numAttr('val') ?? i }))
     .sort((a, b) => a.order - b.order)
     .map((x) => x.ser);
+
+  const plotArea = chartNode.child('plotArea');
+  const { valueAxis, categoryAxis } = parseAxes(plotArea, ctx, chartTypeNode);
+  // Office draws the first series at the bottom of a minMax band; ECharts' pixel offset puts it on top.
+  const reverseSeriesOrder =
+    isHorizontal &&
+    (grouping === 'clustered' || grouping === 'standard') &&
+    (overlap ?? 0) <= 0 &&
+    categoryAxis.orientation !== 'maxMin';
 
   let outsideLabelPx = 0;
   const series: EChartsTypes.BarSeriesOption[] = seriesArr.map((s, idx) => {
@@ -1036,7 +1046,11 @@ function buildBarChartOption(
       name: s.name,
       data,
       stack: isStacked ? 'total' : undefined,
-      itemStyle: s.colorHex ? { color: s.colorHex } : undefined,
+      itemStyle: s.colorHex
+        ? { color: s.colorHex }
+        : reverseSeriesOrder && chartPalette?.length
+          ? { color: chartPalette[idx % chartPalette.length] }
+          : undefined,
       label,
       ...(s.formatCode
         ? {
@@ -1057,9 +1071,6 @@ function buildBarChartOption(
           : undefined,
     };
   });
-
-  const plotArea = chartNode.child('plotArea');
-  const { valueAxis, categoryAxis } = parseAxes(plotArea, ctx, chartTypeNode);
 
   const categoryAxisDef: Record<string, unknown> = {
     type: 'category',
@@ -1164,7 +1175,7 @@ function buildBarChartOption(
         ? [categoryAxisDef, categoryGroupAxis]
         : categoryAxisDef,
     yAxis: isHorizontal ? categoryAxisDef : valueAxisDef,
-    series,
+    series: reverseSeriesOrder ? series.reverse() : series,
   } as EChartsTypes.EChartsOption;
 }
 
@@ -2443,7 +2454,7 @@ function buildOptionForChartType(
   switch (typeName) {
     case 'barChart':
     case 'bar3DChart':
-      return buildBarChartOption(chartTypeNode, chartNode, seriesArr, ctx, defaultFs);
+      return buildBarChartOption(chartTypeNode, chartNode, seriesArr, ctx, defaultFs, chartPalette);
     case 'lineChart':
     case 'line3DChart':
       return buildLineChartOption(chartTypeNode, chartNode, seriesArr, ctx, false, chartPalette);
