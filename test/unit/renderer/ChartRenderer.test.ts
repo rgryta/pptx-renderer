@@ -8921,6 +8921,94 @@ describe('ChartRenderer', () => {
       expect(series.radius).toEqual(['44%', '87%']);
     });
 
+    describe('doughnut labels on the ring', () => {
+      function ringXml(opts: {
+        doughnut?: boolean;
+        dLbls?: string;
+        holeSize?: string;
+        explosion?: number;
+      }): string {
+        const chartType = opts.doughnut === false ? 'pieChart' : 'doughnutChart';
+        return `
+          <c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"
+                        xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <c:chart>
+              <c:plotArea>
+                <c:${chartType}>
+                  <c:ser>
+                    <c:idx val="0"/><c:order val="0"/>
+                    <c:tx><c:v>Share</c:v></c:tx>
+                    ${opts.explosion ? `<c:explosion val="${opts.explosion}"/>` : ''}
+                    ${opts.dLbls ?? ''}
+                    <c:cat><c:strRef><c:strCache><c:ptCount val="3"/><c:pt idx="0"><c:v>Alpha</c:v></c:pt><c:pt idx="1"><c:v>Beta</c:v></c:pt><c:pt idx="2"><c:v>Gamma</c:v></c:pt></c:strCache></c:strRef></c:cat>
+                    <c:val><c:numRef><c:numCache><c:ptCount val="3"/><c:pt idx="0"><c:v>50</c:v></c:pt><c:pt idx="1"><c:v>30</c:v></c:pt><c:pt idx="2"><c:v>20</c:v></c:pt></c:numCache></c:numRef></c:val>
+                  </c:ser>
+                  ${opts.doughnut === false ? '' : `<c:holeSize val="${opts.holeSize ?? '50'}"/>`}
+                </c:${chartType}>
+              </c:plotArea>
+              <c:legend><c:legendPos val="b"/><c:overlay val="0"/></c:legend>
+            </c:chart>
+          </c:chartSpace>`;
+      }
+
+      function ringSeries(xml: string, chartSize = { w: 600, h: 400 }): any {
+        const { option } = parseChartXml(
+          parseXml(xml),
+          createMockRenderContext(),
+          undefined,
+          chartSize,
+        );
+        return (option.series as any[])[0];
+      }
+
+      const percentLabels = (pos = '') =>
+        `<c:dLbls>${pos ? `<c:dLblPos val="${pos}"/>` : ''}<c:showVal val="0"/><c:showPercent val="1"/></c:dLbls>`;
+
+      it('centres doughnut labels on the ring and keeps the no-label radius', () => {
+        const labelled = ringSeries(ringXml({ dLbls: percentLabels() }));
+        const unlabelled = ringSeries(ringXml({}));
+
+        expect(labelled.label.position).toBe('inside');
+        expect(labelled.radius).toEqual(unlabelled.radius);
+      });
+
+      it('treats bestFit on a doughnut as on the ring', () => {
+        const series = ringSeries(ringXml({ dLbls: percentLabels('bestFit') }));
+
+        expect(series.label.position).toBe('inside');
+      });
+
+      it('keeps pie labels outside and shrinks the pie for them', () => {
+        const labelled = ringSeries(ringXml({ doughnut: false, dLbls: percentLabels() }));
+        const unlabelled = ringSeries(ringXml({ doughnut: false }));
+
+        expect(labelled.label.position).toBe('outside');
+        expect(parseFloat(labelled.radius)).toBeLessThan(parseFloat(unlabelled.radius));
+      });
+
+      it.each([true, false])(
+        'never gives a negative radius for a large explosion (doughnut %s)',
+        (doughnut) => {
+          const series = ringSeries(ringXml({ doughnut, dLbls: percentLabels(), explosion: 400 }), {
+            w: 400,
+            h: 300,
+          });
+          const radii = (Array.isArray(series.radius) ? series.radius : [series.radius]).map(
+            parseFloat,
+          );
+
+          expect(radii.every((r: number) => r > 0)).toBe(true);
+        },
+      );
+
+      it('falls back to the default hole size for a non-numeric holeSize', () => {
+        const series = ringSeries(ringXml({ holeSize: 'NaN' }));
+        const [inner, outer] = series.radius.map(parseFloat);
+
+        expect(inner).toBe(Math.round(outer * 0.5));
+      });
+    });
+
     it('merges pie point label overrides with manual layout, box style, and series name', () => {
       const xml = `
         <c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"
