@@ -2014,6 +2014,79 @@ describe('TextRenderer — renderTextBody', () => {
       expect(link).not.toBeNull();
       expect(link!.style.color).toBe('rgb(225, 37, 27)');
     });
+
+    describe('hlinkClr tx extension', () => {
+      const R_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+      const HLINK_CLR_URI = '{A12FA001-AC4F-418D-AE19-62706E023703}';
+      const hlinkClrExt = (val = 'tx') =>
+        `<ext uri="${HLINK_CLR_URI}"><ahyp:hlinkClr xmlns:ahyp="http://schemas.microsoft.com/office/drawing/2018/hyperlinkcolor" val="${val}"/></ext>`;
+      const linkedRPr = (fill: string, rId: string, extLst = '') =>
+        `<rPr xmlns:r="${R_NS}">${fill}<hlinkClick r:id="${rId}">${extLst && `<extLst>${extLst}</extLst>`}</hlinkClick></rPr>`;
+      const NAVY_FILL = '<solidFill><srgbClr val="002060"/></solidFill>';
+
+      function renderLinks(runs: Array<{ text: string; rPr: string }>, endFill = '') {
+        const body = makeTextBody({
+          paragraphs: [
+            {
+              runs: runs.map(({ text, rPr }) => ({ text, properties: xmlNode(rPr) })),
+              level: 0,
+              endParaRPr: xmlNode(`<endParaRPr>${endFill}</endParaRPr>`),
+            },
+          ],
+        });
+        const ctx = createMockRenderContext();
+        for (const rId of ['rId1', 'rId2']) {
+          ctx.slide.rels.set(rId, {
+            type: `${R_NS}/hyperlink`,
+            target: `https://example.com/${rId}`,
+            targetMode: 'External',
+          });
+        }
+        const container = document.createElement('div');
+        renderTextBody(body, undefined, ctx, container);
+        return Array.from(container.querySelectorAll('a')).map((a) => a.style.color);
+      }
+
+      it.each([
+        ['srgb matching a sibling', NAVY_FILL, 'rgb(0, 32, 96)'],
+        ['scheme tx1', '<solidFill><schemeClr val="tx1"/></solidFill>', 'rgb(0, 0, 0)'],
+        ['no colour', '', 'rgb(0, 0, 0)'],
+      ])('keeps the text colour for %s only when the extension says tx', (_, fill, kept) => {
+        const sibling = { text: 'Email ', rPr: `<rPr>${NAVY_FILL}</rPr>` };
+        expect(
+          renderLinks([sibling, { text: 'link', rPr: linkedRPr(fill, 'rId1', hlinkClrExt()) }]),
+        ).toEqual([kept]);
+        expect(renderLinks([sibling, { text: 'link', rPr: linkedRPr(fill, 'rId1') }])).toEqual([
+          'rgb(5, 99, 193)',
+        ]);
+        expect(
+          renderLinks([
+            sibling,
+            { text: 'link', rPr: linkedRPr(fill, 'rId1', hlinkClrExt('hlink')) },
+          ]),
+        ).toEqual(['rgb(5, 99, 193)']);
+      });
+
+      it('applies the extension per run in a mixed paragraph', () => {
+        expect(
+          renderLinks([
+            { text: 'kept', rPr: linkedRPr(NAVY_FILL, 'rId1', hlinkClrExt()) },
+            { text: ' and ', rPr: `<rPr>${NAVY_FILL}</rPr>` },
+            { text: 'themed', rPr: linkedRPr(NAVY_FILL, 'rId2') },
+          ]),
+        ).toEqual(['rgb(0, 32, 96)', 'rgb(5, 99, 193)']);
+      });
+
+      it('finds the colour extension after another ext', () => {
+        const otherExt = '<ext uri="{00000000-0000-0000-0000-000000000000}"><other/></ext>';
+        expect(
+          renderLinks(
+            [{ text: 'link', rPr: linkedRPr(NAVY_FILL, 'rId1', otherExt + hlinkClrExt()) }],
+            NAVY_FILL,
+          ),
+        ).toEqual(['rgb(0, 32, 96)']);
+      });
+    });
   });
 
   describe('layout placeholder lstStyle inheritance (Level 4)', () => {
