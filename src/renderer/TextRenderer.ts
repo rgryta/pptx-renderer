@@ -1494,14 +1494,14 @@ export function renderTextBody(
     } else if (merged.spaceBefore !== undefined) {
       paraDiv.style.marginTop = `${merged.spaceBefore * pointSpacingScale}pt`;
     } else if (merged.spaceBeforePct !== undefined) {
-      paraDiv.style.marginTop = `${officeLinePoints(merged.spaceBeforePct, effectiveFontSize * pointSpacingScale)}pt`;
+      paraDiv.style.marginTop = `${officeLinePoints(merged.spaceBeforePct, effectiveFontSize)}pt`;
     }
     if (trimSpaceAfter) {
       paraDiv.style.marginBottom = '0px';
     } else if (merged.spaceAfter !== undefined) {
       paraDiv.style.marginBottom = `${merged.spaceAfter * pointSpacingScale}pt`;
     } else if (merged.spaceAfterPct !== undefined) {
-      paraDiv.style.marginBottom = `${officeLinePoints(merged.spaceAfterPct, effectiveFontSize * pointSpacingScale)}pt`;
+      paraDiv.style.marginBottom = `${officeLinePoints(merged.spaceAfterPct, effectiveFontSize)}pt`;
     }
 
     // ---- Bullets ----
