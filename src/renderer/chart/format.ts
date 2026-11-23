@@ -162,7 +162,7 @@ function splitFormatSections(formatCode: string): string[] {
   return sections;
 }
 
-const LITERAL_CHARS = new Set('$-+/():!^&\'~{}<>= €£¥');
+const LITERAL_CHARS = new Set("$-+/():!^&'~{}<>= €£¥");
 const MAX_FRACTION_DIGITS = 20;
 const MAX_INTEGER_DIGITS = 21;
 
