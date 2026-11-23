@@ -154,19 +154,25 @@ const CJK_FONT_FAMILY_ALIAS_KEYS = new Set([
 ]);
 
 const FONT_FAMILY_ALIASES: Record<string, string[]> = {
-  calibri: ['Calibri', 'Aptos', 'Carlito', 'system-ui', 'Arial', 'Helvetica', 'sans-serif'],
+  calibri: ['Calibri', 'Aptos', 'Carlito', 'Arial', 'system-ui', 'Helvetica', 'sans-serif'],
   'calibri light': [
     'Calibri Light',
+    'Calibri',
     'Aptos Display',
     'Aptos',
     'Carlito',
-    'system-ui',
     'Arial',
+    'system-ui',
     'Helvetica',
     'sans-serif',
   ],
-  aptos: ['Aptos', 'system-ui', 'Arial', 'Helvetica', 'sans-serif'],
-  'aptos display': ['Aptos Display', 'Aptos', 'system-ui', 'Arial', 'Helvetica', 'sans-serif'],
+  aptos: ['Aptos', 'Arial', 'system-ui', 'Helvetica', 'sans-serif'],
+  'aptos display': ['Aptos Display', 'Aptos', 'Arial', 'system-ui', 'Helvetica', 'sans-serif'],
+  'bradley hand itc': ['Bradley Hand ITC', 'Bradley Hand'],
+  'french script mt': ['French Script MT', 'Brush Script MT', 'Snell Roundhand'],
+  'freestyle script': ['Freestyle Script', 'Brush Script MT', 'Snell Roundhand'],
+  mistral: ['Mistral', 'Brush Script MT', 'Snell Roundhand'],
+  'lucida handwriting': ['Lucida Handwriting', 'Apple Chancery'],
   'microsoft yahei': ['Microsoft YaHei', '微软雅黑'],
   'microsoft yahei ui': ['Microsoft YaHei UI', 'Microsoft YaHei', '微软雅黑'],
   微软雅黑: ['微软雅黑', 'Microsoft YaHei'],
@@ -225,6 +231,63 @@ const SERIF_FONT_FAMILIES = new Set([
   '바탕',
 ]);
 
+const SCRIPT_FONT_FAMILIES = new Set([
+  'bradley hand itc',
+  'french script mt',
+  'freestyle script',
+  'mistral',
+  'lucida handwriting',
+  'juice itc',
+  'pristina',
+  'tempus sans itc',
+  'mv boli',
+  'brush script mt',
+  'segoe script',
+  'kunstler script',
+  'vladimir script',
+  'edwardian script itc',
+]);
+
+const FONT_NAME_STYLE =
+  /^(.+?)\s+(thin|extra ?light|light|regular|medium|semi ?bold|demi ?bold|bold|extra ?bold|ultra ?bold|black|heavy)(?:\s+(italic))?$/i;
+
+const FONT_NAME_WEIGHTS: Record<string, number> = {
+  thin: 100,
+  extralight: 200,
+  light: 300,
+  regular: 400,
+  medium: 500,
+  semibold: 600,
+  demibold: 600,
+  bold: 700,
+  extrabold: 800,
+  ultrabold: 800,
+  black: 900,
+  heavy: 900,
+};
+
+export interface FontNameStyle {
+  family: string;
+  weight: number;
+  italic: boolean;
+}
+
+export function parseFontNameStyle(fontFamily: string): FontNameStyle | undefined {
+  const match = fontFamily.trim().match(FONT_NAME_STYLE);
+  if (!match) return undefined;
+  return {
+    family: match[1],
+    weight: FONT_NAME_WEIGHTS[match[2].replace(' ', '').toLowerCase()],
+    italic: match[3] !== undefined,
+  };
+}
+
+export function fontNameWeight(fontFamily: string, bold: boolean | undefined): string | undefined {
+  const weight = parseFontNameStyle(fontFamily)?.weight;
+  if (weight === undefined) return bold ? 'bold' : undefined;
+  return String(bold ? Math.max(700, weight) : weight);
+}
+
 function normalizeFontFamilyName(fontFamily: string): string {
   return fontFamily
     .trim()
@@ -241,12 +304,15 @@ function cssFontFamilyToken(fontFamily: string): string {
 }
 
 function expandFontFamilyAliases(fontFamily: string): string[] {
-  const normalized = normalizeFontFamilyName(fontFamily);
-  return FONT_FAMILY_ALIASES[normalized] ?? [fontFamily.trim()];
+  const aliases = FONT_FAMILY_ALIASES[normalizeFontFamilyName(fontFamily)];
+  if (aliases) return aliases;
+  const base = parseFontNameStyle(fontFamily)?.family;
+  return base ? [fontFamily.trim(), ...expandFontFamilyAliases(base)] : [fontFamily.trim()];
 }
 
 function genericFontFamily(fontFamily: string): string {
-  const name = normalizeFontFamilyName(fontFamily);
+  const name = normalizeFontFamilyName(parseFontNameStyle(fontFamily)?.family ?? fontFamily);
+  if (SCRIPT_FONT_FAMILIES.has(name)) return 'cursive';
   if (MONOSPACE_FONT_FAMILIES.has(name) || name.endsWith(' mono')) return 'monospace';
   if (SERIF_FONT_FAMILIES.has(name) || (name.includes('serif') && !name.includes('sans'))) {
     return 'serif';

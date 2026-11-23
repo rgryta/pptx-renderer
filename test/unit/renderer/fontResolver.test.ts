@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   cssFontFamilyStack,
+  fontNameWeight,
+  parseFontNameStyle,
   resolveThemeFont,
   resolveThemeFontStack,
 } from '../../../src/renderer/fontResolver';
@@ -98,24 +100,25 @@ describe('fontResolver', () => {
 
   it('serializes CSS font family stacks with aliases, CJK fallbacks, generics, and escaping', () => {
     expect(cssFontFamilyStack('Calibri')).toBe(
-      '"Calibri", "Aptos", "Carlito", system-ui, "Arial", "Helvetica", sans-serif',
+      '"Calibri", "Aptos", "Carlito", "Arial", system-ui, "Helvetica", sans-serif',
     );
     expect(cssFontFamilyStack(['Calibri', 'sans-serif'])).toBe(
-      '"Calibri", "Aptos", "Carlito", system-ui, "Arial", "Helvetica", sans-serif',
+      '"Calibri", "Aptos", "Carlito", "Arial", system-ui, "Helvetica", sans-serif',
     );
     expect(cssFontFamilyStack('Calibri Light')).toBe(
-      '"Calibri Light", "Aptos Display", "Aptos", "Carlito", system-ui, "Arial", "Helvetica", sans-serif',
+      '"Calibri Light", "Calibri", "Aptos Display", "Aptos", "Carlito", "Arial", system-ui, "Helvetica", sans-serif',
     );
     expect(cssFontFamilyStack('Aptos')).toBe(
-      '"Aptos", system-ui, "Arial", "Helvetica", sans-serif',
+      '"Aptos", "Arial", system-ui, "Helvetica", sans-serif',
+    );
+    expect(cssFontFamilyStack('Aptos Display')).toBe(
+      '"Aptos Display", "Aptos", "Arial", system-ui, "Helvetica", sans-serif',
     );
     const cjkStack = cssFontFamilyStack('微软雅黑');
     expect(cjkStack).toContain('"PingFang SC"');
     expect(cjkStack).toContain('"Malgun Gothic"');
     expect(cjkStack.indexOf('"AppleGothic"')).toBeLessThan(cjkStack.indexOf('"Arial Unicode MS"'));
-    expect(cssFontFamilyStack('A "Quoted" \\ Font')).toBe(
-      '"A \\"Quoted\\" \\\\ Font", sans-serif',
-    );
+    expect(cssFontFamilyStack('A "Quoted" \\ Font')).toBe('"A \\"Quoted\\" \\\\ Font", sans-serif');
   });
 
   it('ends unknown font stacks with a generic family chosen from the first font', () => {
@@ -133,10 +136,10 @@ describe('fontResolver', () => {
 
   it('adds exactly one generic family, last, and none for an empty stack', () => {
     expect(cssFontFamilyStack(['Calibri', 'IBM Plex Sans'])).toBe(
-      '"Calibri", "Aptos", "Carlito", system-ui, "Arial", "Helvetica", sans-serif, "IBM Plex Sans"',
+      '"Calibri", "Aptos", "Carlito", "Arial", system-ui, "Helvetica", sans-serif, "IBM Plex Sans"',
     );
     expect(cssFontFamilyStack(['IBM Plex Sans', 'Calibri'])).toBe(
-      '"IBM Plex Sans", "Calibri", "Aptos", "Carlito", system-ui, "Arial", "Helvetica", sans-serif',
+      '"IBM Plex Sans", "Calibri", "Aptos", "Carlito", "Arial", system-ui, "Helvetica", sans-serif',
     );
     expect(cssFontFamilyStack(['Georgia', 'monospace'])).toBe('"Georgia", monospace');
     expect(cssFontFamilyStack('')).toBe('');
@@ -149,6 +152,89 @@ describe('fontResolver', () => {
 
     expect(cssFontFamilyStack(resolveThemeFontStack(['+mj-lt'], ctx))).toBe(
       '"Public Sans", sans-serif',
+    );
+  });
+
+  it('adds the base family after a weight-named family and picks the generic from the base', () => {
+    expect(cssFontFamilyStack('Public Sans Bold')).toBe(
+      '"Public Sans Bold", "Public Sans", sans-serif',
+    );
+    expect(cssFontFamilyStack('Georgia Bold')).toBe('"Georgia Bold", "Georgia", serif');
+    expect(cssFontFamilyStack('Consolas Semi Bold Italic')).toBe(
+      '"Consolas Semi Bold Italic", "Consolas", monospace',
+    );
+    expect(cssFontFamilyStack('Gill Sans Ultra Bold')).toBe(
+      '"Gill Sans Ultra Bold", "Gill Sans", sans-serif',
+    );
+    expect(cssFontFamilyStack('Arial Black')).toBe('"Arial Black", "Arial", sans-serif');
+    expect(cssFontFamilyStack('Segoe UI Semibold')).toBe(
+      '"Segoe UI Semibold", "Segoe UI", sans-serif',
+    );
+    expect(cssFontFamilyStack('Black')).toBe('"Black", sans-serif');
+    const cjkLight = cssFontFamilyStack('DengXian Light');
+    expect(cjkLight.startsWith('"DengXian Light", "DengXian", "等线"')).toBe(true);
+    expect(cjkLight).toContain('"PingFang SC"');
+  });
+
+  it('parses weight and italic from family names but not from embedded tokens or bare weights', () => {
+    expect(parseFontNameStyle('Public Sans Bold')).toEqual({
+      family: 'Public Sans',
+      weight: 700,
+      italic: false,
+    });
+    expect(parseFontNameStyle('Open Sans Extra Light Italic')).toEqual({
+      family: 'Open Sans',
+      weight: 200,
+      italic: true,
+    });
+    expect(parseFontNameStyle('Inter DemiBold')?.weight).toBe(600);
+    expect(parseFontNameStyle('Inter Heavy')?.weight).toBe(900);
+    expect(parseFontNameStyle('Black')).toBeUndefined();
+    expect(parseFontNameStyle('__pptx_embedded_1_0')).toBeUndefined();
+    expect(parseFontNameStyle('Calibri')).toBeUndefined();
+  });
+
+  it('never lets bold lower a name weight and keeps plain names on b', () => {
+    expect(fontNameWeight('Public Sans Bold', undefined)).toBe('700');
+    expect(fontNameWeight('Public Sans Bold', false)).toBe('700');
+    expect(fontNameWeight('Segoe UI Light', false)).toBe('300');
+    expect(fontNameWeight('Segoe UI Light', true)).toBe('700');
+    expect(fontNameWeight('Arial Black', true)).toBe('900');
+    expect(fontNameWeight('Calibri', true)).toBe('bold');
+    expect(fontNameWeight('Calibri', false)).toBeUndefined();
+  });
+
+  it('maps script faces to macOS equivalents and the cursive generic', () => {
+    expect(cssFontFamilyStack('Bradley Hand ITC')).toBe(
+      '"Bradley Hand ITC", "Bradley Hand", cursive',
+    );
+    expect(cssFontFamilyStack('Mistral')).toBe(
+      '"Mistral", "Brush Script MT", "Snell Roundhand", cursive',
+    );
+    expect(cssFontFamilyStack('French Script MT')).toBe(
+      '"French Script MT", "Brush Script MT", "Snell Roundhand", cursive',
+    );
+    expect(cssFontFamilyStack('Freestyle Script')).toBe(
+      '"Freestyle Script", "Brush Script MT", "Snell Roundhand", cursive',
+    );
+    expect(cssFontFamilyStack('Lucida Handwriting')).toBe(
+      '"Lucida Handwriting", "Apple Chancery", cursive',
+    );
+    for (const face of [
+      'Juice ITC',
+      'Pristina',
+      'Tempus Sans ITC',
+      'MV Boli',
+      'Brush Script MT',
+      'Segoe Script',
+      'Kunstler Script',
+      'Vladimir Script',
+      'Edwardian Script ITC',
+    ]) {
+      expect(cssFontFamilyStack(face)).toBe(`"${face}", cursive`);
+    }
+    expect(cssFontFamilyStack(['Mistral', 'SimSun'])).toBe(
+      '"Mistral", "Brush Script MT", "Snell Roundhand", "SimSun", cursive',
     );
   });
 });

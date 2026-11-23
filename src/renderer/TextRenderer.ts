@@ -24,7 +24,12 @@ import {
   parseNormAutofitFontScale,
   parseTextPercentage,
 } from './TextBodyProperties';
-import { cssFontFamilyStack, resolveThemeFontStack } from './fontResolver';
+import {
+  cssFontFamilyStack,
+  fontNameWeight,
+  parseFontNameStyle,
+  resolveThemeFontStack,
+} from './fontResolver';
 import { resolveSlideNavigationIndex, slideJumpTitle } from './navigation';
 import { renderMathFormula } from './MathRenderer';
 
@@ -1796,7 +1801,8 @@ export function renderTextBody(
       element.style.fontSize = `${fontSize * fontScale}pt`;
       // Bold: explicit run rPr > cellTextBold (table style tcTxStyle) > inherited styles
       const hasExplicitRunBold = run.properties?.attr('b') !== undefined;
-      if (hasExplicitRunBold ? runStyle.bold : (options?.cellTextBold ?? runStyle.bold)) {
+      const runBold = hasExplicitRunBold ? runStyle.bold : (options?.cellTextBold ?? runStyle.bold);
+      if (runBold) {
         element.style.fontWeight = 'bold';
       }
       // Italic: explicit run rPr > cellTextItalic (table style tcTxStyle) > inherited styles
@@ -1932,6 +1938,10 @@ export function renderTextBody(
           ctx,
         );
         element.style.fontFamily = cssFontFamilyStack(resolvedFont);
+        const leadFont = resolvedFont[0] ?? '';
+        const nameWeight = fontNameWeight(leadFont, runBold);
+        if (nameWeight) element.style.fontWeight = nameWeight;
+        if (parseFontNameStyle(leadFont)?.italic) element.style.fontStyle = 'italic';
       } else {
         // Fallback to theme minor font
         const fallback = ctx.theme.minorFont.latin || ctx.theme.minorFont.ea;
