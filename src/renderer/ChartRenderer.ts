@@ -375,7 +375,6 @@ function mapBarLabelPosition(
   isHorizontal: boolean,
   isNegative: boolean,
 ): string {
-  if (isStacked) return 'inside';
   const [end, base] = isHorizontal ? ['insideRight', 'insideLeft'] : ['insideTop', 'insideBottom'];
   switch (pos) {
     case 'inEnd':
@@ -385,7 +384,7 @@ function mapBarLabelPosition(
     case 'ctr':
       return 'inside';
     default:
-      return 'outside';
+      return isStacked ? 'inside' : 'outside';
   }
 }
 
@@ -715,6 +714,7 @@ function buildBarChartOption(
   chartNode: SafeXmlNode,
   seriesArr: SeriesData[],
   ctx: RenderContext,
+  defaultFs?: number,
 ): EChartsTypes.EChartsOption {
   const barDir = chartTypeNode.child('barDir').attr('val') || chartTypeNode.attr('barDir') || 'col';
   const grouping = chartGrouping(chartTypeNode);
@@ -796,6 +796,8 @@ function buildBarChartOption(
 
     // Per-series label config (override shared)
     const label: EChartsTypes.BarSeriesOption['label'] = buildLabel(perSeriesLabels);
+    const seriesLabelFontSize =
+      perSeriesLabels?.fontSize === undefined && defaultFs ? defaultFs : label?.fontSize;
     const dLblsNode = getDataLabelsNode(serNodesByOrder[idx], chartTypeNode);
     const pointOverrides = parsePointDataLabelOverrides(dLblsNode, ctx);
     const seriesValues = percentStackedValues?.[idx] ?? s.values;
@@ -853,7 +855,7 @@ function buildBarChartOption(
       }
       if (isHorizontal && pointLabel?.show !== false) {
         const effective = pointLabel?.position ?? label?.position;
-        const fontSize = pointLabel?.fontSize ?? label?.fontSize;
+        const fontSize = pointLabel?.fontSize ?? seriesLabelFontSize;
         const formatter = (pointLabel?.formatter ?? label?.formatter) as
           | ((params: { value: unknown }) => string)
           | undefined;
@@ -2253,11 +2255,12 @@ function buildOptionForChartType(
   ctx: RenderContext,
   chartPalette?: string[],
   chartSize?: ChartPixelSize,
+  defaultFs?: number,
 ): EChartsTypes.EChartsOption | undefined {
   switch (typeName) {
     case 'barChart':
     case 'bar3DChart':
-      return buildBarChartOption(chartTypeNode, chartNode, seriesArr, ctx);
+      return buildBarChartOption(chartTypeNode, chartNode, seriesArr, ctx, defaultFs);
     case 'lineChart':
     case 'line3DChart':
       return buildLineChartOption(chartTypeNode, chartNode, seriesArr, ctx, false, chartPalette);
@@ -2516,6 +2519,7 @@ export function parseChartXml(
   const entriesWithSeries = knownTypeEntries.filter((entry) => entry.seriesArr.length > 0);
   const chartTypeEntries = entriesWithSeries.length > 0 ? entriesWithSeries : knownTypeEntries;
 
+  const defaultFs = extractChartDefaultFontSize(chartXml);
   for (const [index, entry] of chartTypeEntries.entries()) {
     let option = buildOptionForChartType(
       entry.typeName,
@@ -2525,6 +2529,7 @@ export function parseChartXml(
       chartCtx,
       chartPalette,
       chartSize,
+      defaultFs,
     );
     if (!option) continue;
 
@@ -2539,6 +2544,7 @@ export function parseChartXml(
           chartCtx,
           chartPalette,
           chartSize,
+          defaultFs,
         );
         if (!comboOption) continue;
         option = mergeCartesianComboOptions(
@@ -2551,7 +2557,6 @@ export function parseChartXml(
     }
 
     // Apply chart-space default font sizes to text elements that use hardcoded defaults
-    const defaultFs = extractChartDefaultFontSize(chartXml);
     if (defaultFs) {
       applyDefaultFontSizes(option, defaultFs);
     }

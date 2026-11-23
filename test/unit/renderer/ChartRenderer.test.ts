@@ -16,6 +16,7 @@ import {
   type ParseChartResult,
 } from '../../../src/renderer/ChartRenderer';
 import { createMockRenderContext } from '../helpers/mockContext';
+import { estimateTextWidthPx } from '../../../src/renderer/chart/postProcess';
 import { parseXml } from '../../../src/parser/XmlParser';
 import type { RenderContext } from '../../../src/renderer/RenderContext';
 import type { ChartNodeData } from '../../../src/model/nodes/ChartNode';
@@ -8271,7 +8272,11 @@ describe('ChartRenderer', () => {
       ['bar', 'clustered', 'inBase', 'insideLeft', 'insideRight'],
       ['bar', 'clustered', undefined, 'outside', undefined],
       ['bar', 'stacked', 'outEnd', 'inside', undefined],
-      ['bar', 'stacked', 'inEnd', 'inside', undefined],
+      ['bar', 'stacked', 'ctr', 'inside', undefined],
+      ['bar', 'stacked', 'inEnd', 'insideRight', 'insideLeft'],
+      ['bar', 'stacked', 'inBase', 'insideLeft', 'insideRight'],
+      ['col', 'stacked', 'inEnd', 'insideTop', 'insideBottom'],
+      ['col', 'percentStacked', 'inBase', 'insideBottom', 'insideTop'],
       ['col', 'percentStacked', undefined, 'inside', undefined],
     ])(
       'maps %s %s bar data label position %s',
@@ -8306,6 +8311,26 @@ describe('ChartRenderer', () => {
       expect((withLabels.option.grid as any).right).toBeGreaterThan(
         (withoutLabels.option.grid as any).right + 20,
       );
+    });
+
+    it('sizes the outside label margin at the chart default text size', () => {
+      const xml = buildChartSpaceXml({ values: [1234567, 2, 3] })
+        .replace('<c:barDir val="col"/>', '<c:barDir val="bar"/>')
+        .replace(
+          '<c:gapWidth val="219"/>',
+          '<c:dLbls><c:showVal val="1"/></c:dLbls><c:gapWidth val="219"/>',
+        )
+        .replace(
+          '</c:chartSpace>',
+          '<c:txPr><a:bodyPr/><a:p><a:pPr><a:defRPr sz="1400"/></a:pPr><a:endParaRPr lang="en-US"/></a:p></c:txPr></c:chartSpace>',
+        );
+
+      const { option } = parseChartOption(xml);
+      const label = (option.series as any[])[0].label;
+      const longest = estimateTextWidthPx(label.formatter({ value: 1234567 }), label.fontSize);
+
+      expect(label.fontSize).toBeGreaterThanOrEqual(14);
+      expect((option.grid as any).right).toBeGreaterThanOrEqual(longest);
     });
 
     it.each([
