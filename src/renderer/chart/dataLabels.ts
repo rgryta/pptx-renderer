@@ -32,6 +32,11 @@ function parseDataLabelFormatCode(node: SafeXmlNode): string | null | undefined 
   return numFmt.attr('formatCode') || undefined;
 }
 
+function parseDataLabelSeparator(node: SafeXmlNode): string | undefined {
+  const separator = node.child('separator');
+  return separator.exists() ? separator.text() : undefined;
+}
+
 export function parseDataLabels(
   node: SafeXmlNode,
   ctx: RenderContext,
@@ -48,6 +53,7 @@ export function parseDataLabels(
   const position = posNode.exists() ? posNode.attr('val') || undefined : undefined;
   const manualLayout = parseDataLabelManualLayout(dLbls);
   const formatCode = parseDataLabelFormatCode(dLbls);
+  const separator = parseDataLabelSeparator(dLbls);
 
   const txStyle = extractTxPrStyle(dLbls, ctx);
   const color = txStyle?.color ?? extractTxPrColor(dLbls, ctx);
@@ -69,6 +75,7 @@ export function parseDataLabels(
     color,
     fontSize,
     bold,
+    separator,
     ...boxStyle,
   };
 }
@@ -125,6 +132,7 @@ export function parsePointDataLabelOverrides(
 ): Map<number, Partial<DataLabelConfig>> {
   const out = new Map<number, Partial<DataLabelConfig>>();
   if (!dLbls.exists()) return out;
+  const sharedSeparator = parseDataLabelSeparator(dLbls);
   for (const dLbl of dLbls.children('dLbl')) {
     const idx = dLbl.child('idx').numAttr('val');
     if (idx === undefined) continue;
@@ -139,6 +147,7 @@ export function parsePointDataLabelOverrides(
     const showLeaderLines = parseDlblBoolOptional(dLbl, 'showLeaderLines');
     const manualLayout = parseDataLabelManualLayout(dLbl);
     const formatCode = parseDataLabelFormatCode(dLbl);
+    const separator = parseDataLabelSeparator(dLbl);
     if (showVal !== undefined) cfg.showVal = showVal;
     if (showCatName !== undefined) cfg.showCatName = showCatName;
     if (showSerName !== undefined) cfg.showSerName = showSerName;
@@ -162,7 +171,12 @@ export function parsePointDataLabelOverrides(
     if (txStyle?.fontSize !== undefined) cfg.fontSize = txStyle.fontSize;
     if (txStyle?.bold !== undefined) cfg.bold = txStyle.bold;
     Object.assign(cfg, parseDataLabelBoxStyle(dLbl, ctx));
-    if (Object.keys(cfg).length > 0) out.set(idx, cfg);
+    if (separator !== undefined) cfg.separator = separator;
+    if (Object.keys(cfg).length === 0) continue;
+    if (cfg.separator === undefined && sharedSeparator !== undefined) {
+      cfg.separator = sharedSeparator;
+    }
+    out.set(idx, cfg);
   }
   return out;
 }

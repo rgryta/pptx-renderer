@@ -91,6 +91,7 @@ export interface DataLabelConfig {
   borderColor?: string;
   borderWidth?: number;
   padding?: [number, number, number, number];
+  separator?: string;
 }
 
 export type DataLabelManualLayout = Partial<Record<'x' | 'y' | 'width' | 'height', number>>;
