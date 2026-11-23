@@ -144,7 +144,6 @@ import { findMediaByTarget, findMediaByTargetAsync, getOrCreateBlobUrl } from '.
 import { isAllowedExternalMediaUrl, isAllowedExternalUrl } from '../utils/urlSafety';
 import {
   getEffectiveBodyPrChild,
-  MIN_NORM_AUTOFIT_FONT_SCALE,
   parseNormAutofitFontScale,
   parseTextPercentage,
 } from './TextBodyProperties';
@@ -3278,6 +3277,10 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
       const storedScaleNodes = [...textContainer.childNodes];
       const storedFontScale = parseNormAutofitFontScale(normAutofit);
       const fitsStaleFontScale = hasNormAutofit && !isVerticalText && storedFontScale < 1;
+      const toleratesMetricOverflow =
+        hasNormAutofit &&
+        storedFontScale === 1 &&
+        !parseTextPercentage(normAutofit?.attr('lnSpcReduction'));
       const nodesByFontScale = new Map<number, ChildNode[]>();
       const nodesAtFontScale = (fontScale: number) => {
         let nodes = nodesByFontScale.get(fontScale);
@@ -3315,7 +3318,7 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
         const baseJustifyContent = textContainer.style.justifyContent;
         // Empty paragraphs at either edge leave layout when the whole body overflows, so the fit
         // and the placement follow the visible text; trailing ones go first.
-        const fitEdgeEmptyParagraphs = () => {
+        const fitEdgeEmptyParagraphs = (heightTolerance = 1) => {
           const paragraphs = Array.from(textContainer.children) as HTMLElement[];
           const isEmpty = (paragraph: HTMLElement) =>
             !paragraph.textContent?.trim() && !paragraph.querySelector('img, svg');
@@ -3327,7 +3330,8 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
           const leading = paragraphs.slice(0, start);
           const trailing = paragraphs.slice(end);
           for (const paragraph of [...leading, ...trailing]) paragraph.style.display = '';
-          const overflows = () => textContainer.scrollHeight > textContainer.clientHeight;
+          const overflows = () =>
+            textContainer.scrollHeight > textContainer.clientHeight * heightTolerance;
           if (leading.length + trailing.length === 0 || !overflows()) return false;
           for (const paragraph of trailing) paragraph.style.display = 'none';
           if (overflows()) for (const paragraph of leading) paragraph.style.display = 'none';
@@ -3373,6 +3377,7 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
           const savedWhiteSpace = textContainer.style.whiteSpace;
           textContainer.style.justifyContent = 'flex-start';
           let fittedByFontScale = false;
+          let keepsOverflowingStoredScale = false;
           if (
             fitsStaleFontScale &&
             textContainer.clientWidth > 0 &&
@@ -3391,14 +3396,19 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
                   textContainer.clientWidth + WRAPPED_AUTOFIT_WIDTH_TOLERANCE_PX
               );
             };
+            const useFontScale = (fontScale: number) =>
+              fontScale === storedFontScale
+                ? useNodes(storedScaleNodes, baseLineHeight)
+                : useNodes(nodesAtFontScale(fontScale), '');
             const fitsAtFontScale = (fontScale: number) => {
-              useNodes(nodesAtFontScale(fontScale), '');
+              useFontScale(fontScale);
               return fits();
             };
-            let largestFit = MIN_NORM_AUTOFIT_FONT_SCALE;
+            let largestFit = 0;
             if (fitsAtFontScale(1)) {
               largestFit = 1;
-            } else if (fitsAtFontScale(MIN_NORM_AUTOFIT_FONT_SCALE)) {
+            } else if (fitsAtFontScale(storedFontScale)) {
+              largestFit = storedFontScale;
               let overflowing = 1;
               for (let step = 0; step < 6; step++) {
                 const middle = (largestFit + overflowing) / 2;
@@ -3406,17 +3416,14 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
                 else overflowing = middle;
               }
             }
-            useNodes(storedScaleNodes, baseLineHeight);
-            if (
-              largestFit === 1 ||
-              largestFit >= storedFontScale + STALE_NORM_AUTOFIT_SCALE_MARGIN ||
-              !fits()
-            ) {
-              useNodes(nodesAtFontScale(largestFit), '');
-              fittedByFontScale = true;
-            }
+            fittedByFontScale =
+              largestFit === 1 || largestFit >= storedFontScale + STALE_NORM_AUTOFIT_SCALE_MARGIN;
+            keepsOverflowingStoredScale = largestFit === 0;
+            useFontScale(fittedByFontScale ? largestFit : storedFontScale);
           }
-          const edgeEmptiesHidden = usesVisibleTextHeight && fitEdgeEmptyParagraphs();
+          const edgeEmptiesHidden =
+            usesVisibleTextHeight &&
+            fitEdgeEmptyParagraphs(toleratesMetricOverflow ? WRAPPED_AUTOFIT_HEIGHT_TOLERANCE : 1);
           const containerW = textContainer.clientWidth;
           const containerH = textContainer.clientHeight;
           const wrappedContentH = textContainer.scrollHeight;
@@ -3432,15 +3439,14 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
             containerH > 0 &&
             (wrappedContentH <= containerH ||
               (!spAutoFitAllowsVerticalOverflow &&
-                !hasNormAutofit &&
+                (!hasNormAutofit || toleratesMetricOverflow) &&
                 wrappedWidthFits &&
                 wrappedContentH <= containerH * wrappedHeightTolerance));
           const wrappedFits =
             containerW > 0 && containerH > 0 && wrappedWidthFits && wrappedHeightFits;
           const hasToleratedVerticalMetricOverhang =
-            hasSpAutoFit &&
-            !hasNormAutofit &&
-            !spAutoFitAllowsVerticalOverflow &&
+            ((hasSpAutoFit && !hasNormAutofit && !spAutoFitAllowsVerticalOverflow) ||
+              toleratesMetricOverflow) &&
             wrappedWidthFits &&
             wrappedHeightFits &&
             wrappedContentH > containerH &&
@@ -3604,7 +3610,7 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
           ) {
             scale = containerH / wrappedContentH;
           }
-          if (fittedByFontScale) scale = 1;
+          if (fittedByFontScale || keepsOverflowingStoredScale) scale = 1;
           if (edgeEmptiesHidden) {
             textContainer.style.justifyContent = 'flex-start';
           } else if (
@@ -3629,7 +3635,8 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
             textContainer.style.height = expandCssLengthForScale(baseHeight, scale);
           } else if (
             hasToleratedVerticalMetricOverhang ||
-            hasIgnoredImplicitSingleLineVerticalOverflow
+            hasIgnoredImplicitSingleLineVerticalOverflow ||
+            keepsOverflowingStoredScale
           ) {
             // Pair visible vertical overflow with clip rather than hidden on the
             // other axis. CSS otherwise computes hidden/visible as hidden/auto,

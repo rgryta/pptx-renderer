@@ -1202,7 +1202,7 @@ describe('ShapeRenderer', () => {
     expect(textContainer!.style.height).toBe('60px');
   });
 
-  it('fits a stale normAutofit fontScale by font size with a 25% floor, never by transform', () => {
+  it('keeps a stale normAutofit fontScale that fits at no scale as stored and unclipped, never by transform', () => {
     const isFitContainer = (el: HTMLElement) =>
       el.style.display === 'flex' && el.style.flexDirection === 'column';
     const clientWidthSpy = vi
@@ -1255,8 +1255,9 @@ describe('ShapeRenderer', () => {
       const span = textContainer?.querySelector('span') as HTMLSpanElement | null;
 
       expect(textContainer).toBeDefined();
-      expect(span?.style.fontSize).toBe('6pt');
+      expect(span?.style.fontSize).toBe('12pt');
       expect(textContainer!.style.transform).toBe('');
+      expect(textContainer!.style.overflowY).toBe('visible');
     } finally {
       clientWidthSpy.mockRestore();
       clientHeightSpy.mockRestore();
