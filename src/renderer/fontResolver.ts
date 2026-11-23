@@ -177,6 +177,54 @@ const FONT_FAMILY_ALIASES: Record<string, string[]> = {
   'heiti sc': ['Heiti SC', '黑体', 'SimHei'],
 };
 
+const MONOSPACE_FONT_FAMILIES = new Set([
+  'courier',
+  'courier new',
+  'consolas',
+  'lucida console',
+  'menlo',
+  'monaco',
+  'source code pro',
+  'fira mono',
+  'fira code',
+  'roboto mono',
+  'ibm plex mono',
+  'jetbrains mono',
+  'dejavu sans mono',
+  'liberation mono',
+  'cousine',
+]);
+
+const SERIF_FONT_FAMILIES = new Set([
+  'times',
+  'times new roman',
+  'georgia',
+  'garamond',
+  'cambria',
+  'book antiqua',
+  'palatino',
+  'palatino linotype',
+  'baskerville',
+  'baskerville old face',
+  'bodoni',
+  'bodoni mt',
+  'didot',
+  'century schoolbook',
+  'bookman',
+  'bookman old style',
+  'constantia',
+  'simsun',
+  '宋体',
+  'nsimsun',
+  'mingliu',
+  'pmingliu',
+  'ms mincho',
+  'ms pmincho',
+  'yu mincho',
+  'batang',
+  '바탕',
+]);
+
 function normalizeFontFamilyName(fontFamily: string): string {
   return fontFamily
     .trim()
@@ -197,6 +245,15 @@ function expandFontFamilyAliases(fontFamily: string): string[] {
   return FONT_FAMILY_ALIASES[normalized] ?? [fontFamily.trim()];
 }
 
+function genericFontFamily(fontFamily: string): string {
+  const name = normalizeFontFamilyName(fontFamily);
+  if (MONOSPACE_FONT_FAMILIES.has(name) || name.endsWith(' mono')) return 'monospace';
+  if (SERIF_FONT_FAMILIES.has(name) || (name.includes('serif') && !name.includes('sans'))) {
+    return 'serif';
+  }
+  return 'sans-serif';
+}
+
 export function cssFontFamilyStack(fontFamily: string | string[]): string {
   const baseFonts = Array.isArray(fontFamily)
     ? fontFamily.flatMap(expandFontFamilyAliases)
@@ -208,9 +265,15 @@ export function cssFontFamilyStack(fontFamily: string | string[]): string {
   const seen = new Set<string>();
   const unique = stack.filter((font) => {
     const key = normalizeFontFamilyName(font);
-    if (seen.has(key)) return false;
+    if (!key || seen.has(key)) return false;
     seen.add(key);
     return true;
   });
-  return unique.map(cssFontFamilyToken).join(', ');
+  if (unique.length === 0) return '';
+  const hasGeneric = unique.some((font) =>
+    CSS_GENERIC_FONT_FAMILIES.has(normalizeFontFamilyName(font)),
+  );
+  const named = unique.find((font) => !font.startsWith('__pptx_embedded_')) ?? unique[0];
+  const withGeneric = hasGeneric ? unique : [...unique, genericFontFamily(named)];
+  return withGeneric.map(cssFontFamilyToken).join(', ');
 }
