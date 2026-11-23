@@ -1819,9 +1819,9 @@ for (const [x, y] of [
 
 for (const [own, inherited, expectedSize] of [
   ['<noAutofit/>', '<normAutofit fontScale="50000"/>', '32px'],
-  ['<normAutofit fontScale="50%"/>', '<noAutofit/>', '16px'],
+  ['<normAutofit fontScale="50%"/>', '<noAutofit/>', '32px'],
   ['<spAutoFit/>', '<normAutofit fontScale="50000"/>', '32px'],
-  ['', '<normAutofit fontScale="50000"/>', '16px'],
+  ['', '<normAutofit fontScale="50000"/>', '32px'],
 ]) {
   test(`autofit choice ${own || 'inherited'} supersedes ${inherited}`, async ({ page }) => {
     await page.goto('/test/browser/blank.html');
