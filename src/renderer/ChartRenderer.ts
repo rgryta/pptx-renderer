@@ -148,6 +148,61 @@ function extractTitleManualLayout(chartNode: SafeXmlNode): Partial<Record<'left'
   return out;
 }
 
+const PIE_TITLE_WIDTH_RATIO = 0.8;
+const ECHARTS_TITLE_PADDING_PX = 5;
+const BOLD_TEXT_WIDTH_FACTOR = 1.1;
+
+/** Wraps a non-overlay pie title at the final post-process font and returns the px height it covers. */
+function reservePieTitleBand(
+  titleOption: EChartsTypes.EChartsOption['title'],
+  chartNode: SafeXmlNode,
+  ctx: RenderContext,
+  chartSize: ChartPixelSize | undefined,
+  defaultFs: number | undefined,
+): number {
+  if (!titleOption || Array.isArray(titleOption)) return 0;
+  if (!chartSize || !(chartSize.w > 0) || !(chartSize.h > 0)) return 0;
+  if (parseOoxmlBoolElement(chartNode.child('title').child('overlay'))) return 0;
+  if (Object.keys(extractTitleManualLayout(chartNode)).length > 0) return 0;
+
+  const finalTitle: EChartsTypes.EChartsOption = {
+    title: { textStyle: { ...titleOption.textStyle } },
+  };
+  if (defaultFs) applyDefaultFontSizes(finalTitle, defaultFs);
+  const themeFontFamily = getChartThemeFontFamily(ctx);
+  if (themeFontFamily) applyDefaultFontFamily(finalTitle, themeFontFamily);
+  const finalStyle = (
+    finalTitle.title as { textStyle: EChartsTypes.TitleComponentOption['textStyle'] }
+  ).textStyle;
+  const fontSize = Math.max(
+    Number(finalStyle?.fontSize) || 12,
+    ...Object.values(finalStyle?.rich ?? {}).map((run) => Number(run?.fontSize) || 0),
+  );
+  const weight = finalStyle?.fontWeight;
+  const widthFactor = weight === 'bold' || Number(weight) >= 600 ? BOLD_TEXT_WIDTH_FACTOR : 1;
+  const widthPx = Math.round(chartSize.w * PIE_TITLE_WIDTH_RATIO);
+  const lineHeight = Math.ceil(fontSize * 1.2);
+  const plainText = String(titleOption.text ?? '')
+    .replace(/\{r\d+\|/g, '')
+    .replace(/\\(.)|\}/g, '$1');
+  const lineCount = plainText
+    .split('\n')
+    .reduce(
+      (sum, paragraph) =>
+        sum +
+        Math.max(1, Math.ceil((estimateTextWidthPx(paragraph, fontSize) * widthFactor) / widthPx)),
+      0,
+    );
+
+  titleOption.textStyle = {
+    ...titleOption.textStyle,
+    width: widthPx,
+    overflow: 'break',
+    lineHeight,
+  };
+  return ECHARTS_TITLE_PADDING_PX * 2 + lineCount * lineHeight;
+}
+
 function computePieLayout(
   legendInfo: LegendInfo | undefined,
   isDoughnut: boolean,
@@ -156,6 +211,7 @@ function computePieLayout(
   hasExplosion = false,
   chartSize?: ChartPixelSize,
   explosionOffsetPx = 0,
+  titleBandPx = 0,
 ): { center: [string, string]; radius: [string, string] | string } {
   const placement = getLegendPlacement(legendInfo);
   let center: [string, string] = ['50%', '55%'];
@@ -182,7 +238,11 @@ function computePieLayout(
     outerRadius -= 4;
   }
 
-  outerRadius = fitPieRadiusPct(outerRadius, center, chartSize, explosionOffsetPx);
+  if (titleBandPx > 0 && chartSize) {
+    const centerYPx = titleBandPx + (parseFloat(center[1]) / 100) * (chartSize.h - titleBandPx);
+    center = [center[0], `${Math.round(centerYPx)}px`];
+  }
+  outerRadius = fitPieRadiusPct(outerRadius, center, chartSize, explosionOffsetPx, titleBandPx);
 
   if (!isDoughnut) {
     return { center, radius: `${outerRadius}%` };
@@ -192,17 +252,20 @@ function computePieLayout(
   return { center, radius: [`${innerRadius}%`, `${outerRadius}%`] };
 }
 
-/** ECharts sizes a percentage pie radius against half the shorter side; keep the disc inside the chart box. */
+/** ECharts sizes a percentage pie radius against half the shorter side; keep the disc inside the chart box below the title band. */
 function fitPieRadiusPct(
   radiusPct: number,
   center: [string, string],
   chartSize: ChartPixelSize | undefined,
   explosionOffsetPx: number,
+  topPx = 0,
 ): number {
   if (!chartSize || !(chartSize.w > 0) || !(chartSize.h > 0)) return radiusPct;
   const cx = (parseFloat(center[0]) / 100) * chartSize.w;
-  const cy = (parseFloat(center[1]) / 100) * chartSize.h;
-  const roomPx = Math.min(cx, chartSize.w - cx, cy, chartSize.h - cy) - explosionOffsetPx;
+  const cy = center[1].endsWith('px')
+    ? parseFloat(center[1])
+    : (parseFloat(center[1]) / 100) * chartSize.h;
+  const roomPx = Math.min(cx, chartSize.w - cx, cy - topPx, chartSize.h - cy) - explosionOffsetPx;
   const halfShortSide = Math.min(chartSize.w, chartSize.h) / 2;
   return Math.min(radiusPct, Math.floor((roomPx / halfShortSide) * 100));
 }
@@ -1271,6 +1334,7 @@ function buildPieChartOption(
   isDoughnut: boolean,
   ctx: RenderContext,
   chartSize?: ChartPixelSize,
+  defaultFs?: number,
 ): EChartsTypes.EChartsOption {
   const titleOption = buildChartTitleOption(chartNode, seriesArr, ctx, 12);
   const legendInfo = extractLegendInfo(chartNode, ctx);
@@ -1329,6 +1393,7 @@ function buildPieChartOption(
       (meta.explosions ?? []).map((explosion) => pieExplosionToOffset(explosion, isDoughnut)),
     ),
   );
+  const titleBandPx = reservePieTitleBand(titleOption, chartNode, ctx, chartSize, defaultFs);
   const pieLayout = computePieLayout(
     legendInfo,
     isDoughnut,
@@ -1337,6 +1402,7 @@ function buildPieChartOption(
     hasExplosion,
     chartSize,
     explosionOffsetPx,
+    titleBandPx,
   );
   const startAngle = mapFirstSliceAngle(chartTypeNode.child('firstSliceAng').numAttr('val'));
 
@@ -1411,7 +1477,9 @@ function buildPieChartOption(
     };
   });
 
-  const legendTopPx = getLegendTopPx(!!titleOption, legendInfo);
+  const defaultLegendTopPx = getLegendTopPx(!!titleOption, legendInfo);
+  const legendTopPx =
+    defaultLegendTopPx !== undefined && titleBandPx > 0 ? titleBandPx : defaultLegendTopPx;
   const tooltipFmt = getSharedSeriesFormatCode(renderSeriesArr);
   const legendData = isDoughnut
     ? uniquePieLegendCategories(renderSeriesArr)
@@ -2270,9 +2338,25 @@ function buildOptionForChartType(
       return buildLineChartOption(chartTypeNode, chartNode, seriesArr, ctx, true, chartPalette);
     case 'pieChart':
     case 'pie3DChart':
-      return buildPieChartOption(chartTypeNode, chartNode, seriesArr, false, ctx, chartSize);
+      return buildPieChartOption(
+        chartTypeNode,
+        chartNode,
+        seriesArr,
+        false,
+        ctx,
+        chartSize,
+        defaultFs,
+      );
     case 'doughnutChart':
-      return buildPieChartOption(chartTypeNode, chartNode, seriesArr, true, ctx, chartSize);
+      return buildPieChartOption(
+        chartTypeNode,
+        chartNode,
+        seriesArr,
+        true,
+        ctx,
+        chartSize,
+        defaultFs,
+      );
     case 'radarChart':
       return buildRadarChartOption(
         chartTypeNode,
