@@ -1,6 +1,6 @@
 import { SafeXmlNode } from '../../parser/XmlParser';
 import { parseOoxmlBool } from '../../parser/booleans';
-import { emuToPx } from '../../parser/units';
+import { emuToPx, ptToPx } from '../../parser/units';
 import { cssFontFamilyStack, resolveThemeFontStack } from '../fontResolver';
 import { RenderContext } from '../RenderContext';
 import { resolveColor } from '../StyleResolver';
@@ -80,6 +80,7 @@ export function chartTextStyleToEChartsTextStyle(
   if (style.bold !== undefined) {
     out.fontWeight = style.bold ? 'bold' : 'normal';
   }
+  if (style[EXPLICIT_FONT_SIZE]) out[EXPLICIT_FONT_SIZE] = true;
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
@@ -155,7 +156,7 @@ function extractDefRPrStyle(defRPr: SafeXmlNode, ctx: RenderContext): ChartTextS
   }
   const sz = defRPr.numAttr('sz');
   if (sz !== undefined && sz > 0) {
-    style.fontSize = Math.round(sz / 100);
+    style.fontSize = Number(ptToPx(sz / 100).toFixed(2));
     style[EXPLICIT_FONT_SIZE] = true;
   }
   const b = defRPr.attr('b');

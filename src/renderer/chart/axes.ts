@@ -10,6 +10,7 @@ import {
   DEFAULT_CHART_FOREGROUND_COLOR,
   DEFAULT_MAJOR_GRIDLINE_STYLE,
   type AxisInfo,
+  markExplicitFontSize,
   type ChartLineStyle,
 } from './types';
 
@@ -325,7 +326,7 @@ export function applyAxisInfo(
   }
   if (info.labelFontSize !== undefined) {
     const existingLabel = (axisDef.axisLabel as Record<string, unknown>) || {};
-    axisDef.axisLabel = { ...existingLabel, fontSize: info.labelFontSize };
+    axisDef.axisLabel = markExplicitFontSize({ ...existingLabel, fontSize: info.labelFontSize });
   }
 
   if (info.lineColor || !info.deleted) {

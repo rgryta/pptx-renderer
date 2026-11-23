@@ -1547,7 +1547,9 @@ function buildRadarChartOption(
         show: true,
         formatter: (val: number) => formatValue(val, valueAxis.numFmt),
         color: valueAxis.labelColor ?? '#000000',
-        ...(valueAxis.labelFontSize !== undefined ? { fontSize: valueAxis.labelFontSize } : {}),
+        ...(valueAxis.labelFontSize !== undefined
+          ? markExplicitFontSize({ fontSize: valueAxis.labelFontSize })
+          : {}),
       }
     : undefined;
   // Read radar style to determine default marker/grid behavior

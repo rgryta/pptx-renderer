@@ -1,5 +1,6 @@
 import type * as echarts from 'echarts';
 import { SafeXmlNode } from '../../parser/XmlParser';
+import { ptToPx } from '../../parser/units';
 import { parseOoxmlBoolElement } from './ooxml';
 import {
   DEFAULT_CHART_FOREGROUND_COLOR,
@@ -52,7 +53,7 @@ export function applyDefaultFontSizes(option: echarts.EChartsOption, defaultFs: 
 
   if (opt.title?.textStyle?.fontSize) {
     const cur = opt.title.textStyle.fontSize;
-    if (cur <= 14) {
+    if (cur <= 14 && !hasExplicitFontSize(opt.title.textStyle)) {
       opt.title.textStyle.fontSize = defaultFs;
     }
   }
@@ -65,7 +66,7 @@ export function applyDefaultFontSizes(option: echarts.EChartsOption, defaultFs: 
   }
   for (const axisLabel of getRadarAxisLabelStyles(option)) {
     const current = axisLabel.fontSize;
-    if (typeof current !== 'number' || current <= 10) {
+    if ((typeof current !== 'number' || current <= 10) && !hasExplicitFontSize(axisLabel)) {
       axisLabel.fontSize = defaultFs;
     }
   }
@@ -85,7 +86,7 @@ export function applyDefaultFontSizes(option: echarts.EChartsOption, defaultFs: 
   const applyAxisDefaultFontSize = (axis: MutableAxisOption | undefined) => {
     if (!axis?.axisLabel) return;
     const current = axis.axisLabel.fontSize;
-    if (current === undefined || current <= 10) {
+    if ((current === undefined || current <= 10) && !hasExplicitFontSize(axis.axisLabel)) {
       axis.axisLabel.fontSize = defaultFs;
     }
   };
@@ -585,7 +586,7 @@ export function extractChartDefaultFontSize(chartSpaceNode: SafeXmlNode): number
     if (!defRPr.exists()) continue;
     const sz = defRPr.numAttr('sz');
     if (sz !== undefined && sz > 0) {
-      return Math.round((sz / 100) * (96 / 72));
+      return Number(ptToPx(sz / 100).toFixed(2));
     }
   }
   return undefined;
