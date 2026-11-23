@@ -2090,6 +2090,168 @@ describe('ChartRenderer', () => {
       expect((option.series as any[])?.[0]?.radius).toBe('82%');
     });
 
+    describe('pie title room', () => {
+      const chartSize = { w: 432, h: 365 };
+      const longTitle = 'VOYAGE COUNT BY CHARTER TYPE AND REGION FOR 2026';
+
+      function titledPieXml(opts: {
+        titleXml?: string;
+        legendPos?: string;
+        legendOverlay?: boolean;
+        doughnut?: boolean;
+        explosion?: number;
+      }): string {
+        const chartType = opts.doughnut ? 'doughnutChart' : 'pieChart';
+        const legendXml = opts.legendPos
+          ? `<c:legend><c:legendPos val="${opts.legendPos}"/><c:overlay val="${opts.legendOverlay ? 1 : 0}"/></c:legend>`
+          : '';
+        return `
+          <c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"
+                        xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+            <c:chart>
+              ${opts.titleXml ?? titleXml()}
+              <c:autoTitleDeleted val="0"/>
+              <c:plotArea>
+                <c:${chartType}>
+                  ${opts.doughnut ? '<c:holeSize val="50"/>' : ''}
+                  <c:ser>
+                    <c:idx val="0"/><c:order val="0"/>
+                    ${opts.explosion ? `<c:explosion val="${opts.explosion}"/>` : ''}
+                    <c:tx><c:strRef><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>Voyages</c:v></c:pt></c:strCache></c:strRef></c:tx>
+                    <c:cat><c:strRef><c:strCache><c:ptCount val="2"/>
+                      <c:pt idx="0"><c:v>Spot</c:v></c:pt>
+                      <c:pt idx="1"><c:v>Period</c:v></c:pt>
+                    </c:strCache></c:strRef></c:cat>
+                    <c:val><c:numRef><c:numCache><c:formatCode>General</c:formatCode><c:ptCount val="2"/>
+                      <c:pt idx="0"><c:v>60</c:v></c:pt>
+                      <c:pt idx="1"><c:v>40</c:v></c:pt>
+                    </c:numCache></c:numRef></c:val>
+                  </c:ser>
+                </c:${chartType}>
+              </c:plotArea>
+              ${legendXml}
+            </c:chart>
+          </c:chartSpace>`;
+      }
+
+      function titleXml(opts: { text?: string; overlay?: string; layout?: string } = {}): string {
+        return `<c:title><c:tx><c:rich><a:bodyPr/><a:p><a:pPr><a:defRPr sz="1400" b="1"/></a:pPr><a:r><a:rPr lang="en-US" sz="1400" b="1"/><a:t>${opts.text ?? longTitle}</a:t></a:r></a:p></c:rich></c:tx>${opts.layout ?? ''}${opts.overlay ?? '<c:overlay val="0"/>'}</c:title>`;
+      }
+
+      function parsePie(xml: string) {
+        const { option } = parseChartXml(
+          parseXml(xml),
+          createMockRenderContext(),
+          undefined,
+          chartSize,
+        );
+        return { option, series: (option.series as any[])[0], title: option.title as any };
+      }
+
+      function discTopPx(series: any, explosionPx = 0): number {
+        const outer = Array.isArray(series.radius) ? series.radius[1] : series.radius;
+        const radiusPx = (parseFloat(outer) / 100) * (Math.min(chartSize.w, chartSize.h) / 2);
+        return parseFloat(series.center[1]) - radiusPx - explosionPx;
+      }
+
+      function titleBandPx(title: any, lines: number): number {
+        return 5 + lines * title.textStyle.lineHeight;
+      }
+
+      it('wraps a long title at 80% of the chart width and keeps the pie below both lines', () => {
+        const { series, title } = parsePie(titledPieXml({ legendPos: 'b' }));
+
+        expect(title.textStyle).toMatchObject({ width: 346, overflow: 'break' });
+        expect(title.textStyle.lineHeight).toBeGreaterThanOrEqual(title.textStyle.fontSize);
+        expect(discTopPx(series)).toBeGreaterThanOrEqual(titleBandPx(title, 2));
+        expect(series.center[1]).toMatch(/px$/);
+      });
+
+      it.each(['b', 't', 'l', 'r'])('keeps the pie below the title with legend %s', (legendPos) => {
+        const { option, series, title } = parsePie(titledPieXml({ legendPos }));
+
+        expect(discTopPx(series)).toBeGreaterThanOrEqual(titleBandPx(title, 2));
+        expect(2 * parseFloat(series.center[1]) - discTopPx(series)).toBeLessThanOrEqual(
+          chartSize.h,
+        );
+        if (legendPos === 't') {
+          expect((option.legend as any).top).toBeGreaterThanOrEqual(titleBandPx(title, 2));
+        }
+      });
+
+      it('keeps the pie below the title with an overlay legend', () => {
+        const { series, title } = parsePie(titledPieXml({ legendPos: 'b', legendOverlay: true }));
+
+        expect(discTopPx(series)).toBeGreaterThanOrEqual(titleBandPx(title, 2));
+      });
+
+      it('keeps a doughnut ring below the title', () => {
+        const { series, title } = parsePie(titledPieXml({ legendPos: 'r', doughnut: true }));
+
+        expect(Array.isArray(series.radius)).toBe(true);
+        expect(discTopPx(series)).toBeGreaterThanOrEqual(titleBandPx(title, 2));
+      });
+
+      it('keeps an exploded slice below the title', () => {
+        const { series, title } = parsePie(titledPieXml({ legendPos: 'b', explosion: 20 }));
+
+        expect(discTopPx(series, series.selectedOffset)).toBeGreaterThanOrEqual(
+          titleBandPx(title, 2),
+        );
+      });
+
+      it('reserves one line for a short title', () => {
+        const { series, title } = parsePie(
+          titledPieXml({ legendPos: 'b', titleXml: titleXml({ text: 'Voyages' }) }),
+        );
+
+        expect(discTopPx(series)).toBeGreaterThanOrEqual(titleBandPx(title, 1));
+        expect(discTopPx(series)).toBeLessThan(titleBandPx(title, 2));
+      });
+
+      it('leaves an overlay title and its pie layout as before', () => {
+        const { series, title } = parsePie(
+          titledPieXml({ legendPos: 'b', titleXml: titleXml({ overlay: '<c:overlay val="1"/>' }) }),
+        );
+
+        expect(title.textStyle.width).toBeUndefined();
+        expect(series.center).toEqual(['50%', '45%']);
+      });
+
+      it('leaves a manually placed title and its pie layout as before', () => {
+        const { series, title } = parsePie(
+          titledPieXml({
+            legendPos: 'b',
+            titleXml: titleXml({
+              layout:
+                '<c:layout><c:manualLayout><c:x val="0.1"/><c:y val="0.02"/></c:manualLayout></c:layout>',
+            }),
+          }),
+        );
+
+        expect(title.textStyle.width).toBeUndefined();
+        expect(series.center).toEqual(['50%', '45%']);
+      });
+
+      it('reserves nothing when the title is deleted', () => {
+        const xml = titledPieXml({ legendPos: 'b' }).replace(
+          '<c:autoTitleDeleted val="0"/>',
+          '<c:autoTitleDeleted val="1"/>',
+        );
+        const { series, title } = parsePie(xml);
+
+        expect(title).toBeUndefined();
+        expect(series.center).toEqual(['50%', '45%']);
+      });
+
+      it('reserves room for a synthesised series-name title', () => {
+        const { series, title } = parsePie(titledPieXml({ legendPos: 'b', titleXml: ' ' }));
+
+        expect(title.text).toBe('Voyages');
+        expect(discTopPx(series)).toBeGreaterThanOrEqual(titleBandPx(title, 1));
+      });
+    });
+
     it('should parse doughnutChart with inner/outer radius', () => {
       const xml = `
         <c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"
