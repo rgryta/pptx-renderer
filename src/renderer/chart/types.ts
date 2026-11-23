@@ -61,6 +61,7 @@ export interface AxisInfo {
   numFmt?: string;
   min?: number;
   max?: number;
+  majorUnit?: number;
   hasMajorGridlines: boolean;
   majorTickMark?: string;
   orientation: string;
