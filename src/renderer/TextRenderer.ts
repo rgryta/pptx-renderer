@@ -633,6 +633,29 @@ function mergeParagraphDefaultRunProps(
   }
 }
 
+/** Font family: explicit run rPr > cellTextFontFamily (table style) > inherited > theme minor. */
+function runCssFontFamily(
+  runProperties: SafeXmlNode | undefined,
+  runStyle: MergedRunStyle,
+  cellTextFontFamily: string | string[] | undefined,
+  ctx: RenderContext,
+): string | undefined {
+  const hasExplicitRunFont =
+    runProperties?.child('latin').exists() ||
+    runProperties?.child('ea').exists() ||
+    runProperties?.child('cs').exists();
+  const effectiveFont = hasExplicitRunFont
+    ? (runStyle.fontFamilyStack ?? runStyle.fontFamily)
+    : (cellTextFontFamily ?? runStyle.fontFamilyStack ?? runStyle.fontFamily);
+  if (effectiveFont) {
+    return cssFontFamilyStack(
+      resolveThemeFontStack(Array.isArray(effectiveFont) ? effectiveFont : [effectiveFont], ctx),
+    );
+  }
+  const fallback = ctx.theme.minorFont.latin || ctx.theme.minorFont.ea;
+  return fallback ? cssFontFamilyStack(fallback) : undefined;
+}
+
 function getParagraphDefaultRunStyle(
   paragraphStyle: MergedParagraphStyle,
   ctx: RenderContext,
@@ -1475,10 +1498,13 @@ export function renderTextBody(
     // Keep the paragraph block in sync with Office's effective run size so tiny
     // multi-paragraph labels do not inherit a 13px page font and overflow their boxes.
     paraDiv.style.fontSize = `${effectiveFontSize * fontScale}pt`;
-    if (!firstVisibleTextRun) {
-      const paragraphFont = paragraphRunStyle.fontFamilyStack ?? paragraphRunStyle.fontFamily;
-      if (paragraphFont) paraDiv.style.fontFamily = cssFontFamilyStack(paragraphFont);
-    }
+    const paragraphFont = runCssFontFamily(
+      paragraphRunProperties,
+      paragraphRunStyle,
+      options?.cellTextFontFamily,
+      ctx,
+    );
+    if (paragraphFont) paraDiv.style.fontFamily = paragraphFont;
 
     const trimSpaceBefore =
       options?.trimOuterParagraphSpacing && paragraphIndex === firstVisibleParagraphIndex;
@@ -1918,27 +1944,8 @@ export function renderTextBody(
         }
       }
 
-      // Font family: explicit run rPr > cellTextFontFamily (table style) > inherited > theme fallback
-      const hasExplicitRunFont =
-        run.properties?.child('latin').exists() ||
-        run.properties?.child('ea').exists() ||
-        run.properties?.child('cs').exists();
-      const effectiveFont = hasExplicitRunFont
-        ? (runStyle.fontFamilyStack ?? runStyle.fontFamily)
-        : (options?.cellTextFontFamily ?? runStyle.fontFamilyStack ?? runStyle.fontFamily);
-      if (effectiveFont) {
-        const resolvedFont = resolveThemeFontStack(
-          Array.isArray(effectiveFont) ? effectiveFont : [effectiveFont],
-          ctx,
-        );
-        element.style.fontFamily = cssFontFamilyStack(resolvedFont);
-      } else {
-        // Fallback to theme minor font
-        const fallback = ctx.theme.minorFont.latin || ctx.theme.minorFont.ea;
-        if (fallback) {
-          element.style.fontFamily = cssFontFamilyStack(fallback);
-        }
-      }
+      const runFont = runCssFontFamily(run.properties, runStyle, options?.cellTextFontFamily, ctx);
+      if (runFont) element.style.fontFamily = runFont;
 
       // Character spacing (a:spc) — compact/tracking in points
       const usesWordArtVerticalAdvance =

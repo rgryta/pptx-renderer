@@ -73,19 +73,20 @@ test('stored fontScale that fits while 100% overflows stays as stored', async ({
   expect(result.transform).toBe('');
 });
 
-for (const [name, body, size, transform, maxFontSize] of [
-  ['without a stored scale', '<a:normAutofit/>', 1000, /^scale\(0\.9\d*\)$/, 13.34],
+for (const [name, body, size, transform, maxFontSize, heightPx] of [
+  ['without a stored scale', '<a:normAutofit/>', 1000, /^scale\(0\.9\d*\)$/, 13.34, 180],
   [
     'after a stored scale',
     '<a:normAutofit fontScale="85000" lnSpcReduction="10000"/>',
     1200,
     /^$/,
     13.6,
+    175,
   ],
 ] as const) {
   test(`normAutofit text slightly taller than the box shrinks to fit ${name}`, async ({ page }) => {
     await page.goto('/test/browser/blank.html');
-    const result = await renderFit(page, body, paragraphs(12, size), 180);
+    const result = await renderFit(page, body, paragraphs(12, size), heightPx);
     expect(result.transform).toMatch(transform);
     expect(parseFloat(result.fontSize)).toBeLessThan(maxFontSize);
     expect(result.overflow).toBeLessThanOrEqual(1);
