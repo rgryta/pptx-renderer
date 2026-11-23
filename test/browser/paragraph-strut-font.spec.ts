@@ -56,3 +56,48 @@ test('text lines are exactly the line-height when the run font differs from the 
   }
   expect(Math.abs(result.total - 10 * result.lineHeight)).toBeLessThanOrEqual(1);
 });
+
+test('a line after a soft break is sized by its own runs, not the larger first line', async ({
+  page,
+}) => {
+  await page.goto('/test/browser/blank.html');
+  const heights = await page.evaluate(async () => {
+    const { renderTextBody } = await import('/src/renderer/TextRenderer.ts');
+    const { xmlNode } = await import('/test/unit/helpers/xmlNode.ts');
+    const { createMockRenderContext } = await import('/test/unit/helpers/mockContext.ts');
+
+    const run = (text: string, sz: number) => ({
+      text,
+      properties: xmlNode(`<rPr sz="${sz}"><latin typeface="Arial"/></rPr>`),
+    });
+    const paragraphHeight = (runs: { text: string }[]) => {
+      const container = document.createElement('div');
+      container.style.width = '600px';
+      renderTextBody(
+        {
+          bodyProperties: xmlNode('<bodyPr wrap="square"><noAutofit/></bodyPr>'),
+          paragraphs: [
+            {
+              properties: xmlNode('<pPr><lnSpc><spcPct val="100000"/></lnSpc></pPr>'),
+              runs,
+              level: 0,
+            },
+          ],
+        },
+        undefined,
+        createMockRenderContext(),
+        container,
+      );
+      document.body.append(container);
+      return (container.firstElementChild as HTMLElement).getBoundingClientRect().height;
+    };
+
+    return {
+      mixed: paragraphHeight([run('Heading', 3600), run('\n', 1600), run('Body', 1600)]),
+      large: paragraphHeight([run('Heading', 3600)]),
+      small: paragraphHeight([run('Body', 1600)]),
+    };
+  });
+
+  expect(Math.abs(heights.mixed - heights.large - heights.small)).toBeLessThanOrEqual(1);
+});
