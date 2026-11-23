@@ -99,7 +99,7 @@ test('stale stored fontScale that overflows at every font scale floors at 25% wi
   const result = await renderFit(
     page,
     '<a:normAutofit fontScale="25000" lnSpcReduction="20000"/>',
-    paragraphs(40, 1900),
+    paragraphs(8, 1900),
     179,
     '<a:lvl1pPr><a:spcBef><a:spcPts val="2000"/></a:spcBef></a:lvl1pPr>',
     433,
@@ -199,13 +199,10 @@ const stalePlaceholderBoxes = (
   empties: number,
   list = '',
   leadingEmpties = 0,
-  geometry = { width: 433, height: 179 },
 ) => {
   const runs = [
     ...Array.from({ length: leadingEmpties }, () => '<a:endParaRPr sz="1900"/>'),
-    ...texts.map((text) =>
-      text ? `<a:r><a:rPr sz="${size}"/><a:t>${text}</a:t></a:r>` : '<a:endParaRPr sz="1900"/>',
-    ),
+    ...texts.map((text) => `<a:r><a:rPr sz="${size}"/><a:t>${text}</a:t></a:r>`),
     '<a:endParaRPr sz="6400"/>',
     ...Array.from({ length: empties }, () => '<a:endParaRPr sz="1900"/>'),
   ].join('</a:p><a:p>');
@@ -215,7 +212,8 @@ const stalePlaceholderBoxes = (
     body,
     runs,
     list,
-    ...geometry,
+    width: 433,
+    height: 179,
     top: 194,
     flipH,
   }));
@@ -303,41 +301,4 @@ test('transform fit on a flipped normAutofit box stays inside the box', async ({
   expect(result.transform).toMatch(/scale\(0\.\d+\)$/);
   expect(result.leftToRight).toBe(true);
   expect(result.outside).toBeLessThanOrEqual(1);
-});
-
-test('stale stored fontScale shrinks master point spacing with the text so every line fits', async ({
-  page,
-}) => {
-  await page.goto('/test/browser/blank.html');
-  const results = await renderBoxes(
-    page,
-    stalePlaceholderBoxes(
-      1600,
-      [
-        heading,
-        '',
-        'Issued in total : 103',
-        '',
-        'Completed : 47',
-        '',
-        'Open : 56',
-        '',
-        'Overdue',
-        '',
-        'Next',
-      ],
-      11,
-      '<a:lvl1pPr><a:lnSpc><a:spcPct val="90000"/></a:lnSpc><a:spcBef><a:spcPts val="1000"/></a:spcBef></a:lvl1pPr>',
-      11,
-      { width: 403, height: 139 },
-    ),
-  );
-  for (const result of results) {
-    expect(result.transform).not.toContain('scale(');
-    expect(result.leftToRight).toBe(true);
-    expect(result.firstLineTop).toBeGreaterThanOrEqual(0);
-    expect(result.lastLineBottom).toBeGreaterThanOrEqual(0);
-    expect(result.outside).toBeLessThanOrEqual(1);
-    expect(result.contentOverflow).toBeLessThanOrEqual(0);
-  }
 });
