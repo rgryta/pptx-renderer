@@ -3306,23 +3306,28 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
         const baseSvgHeight = mainSvg?.getAttribute('height') ?? null;
         const baseSvgPreserveAspectRatio = mainSvg?.getAttribute('preserveAspectRatio') ?? null;
         const usesVisibleTextHeight = hasNormAutofit && !isVerticalText;
+        const trailingEmptyParagraphs = () => {
+          const paragraphs = Array.from(textContainer.children) as HTMLElement[];
+          let end = paragraphs.length;
+          while (
+            end > 0 &&
+            !paragraphs[end - 1].textContent?.trim() &&
+            !paragraphs[end - 1].querySelector('img, svg')
+          ) {
+            end--;
+          }
+          return end > 0 ? paragraphs.slice(end) : [];
+        };
         // Trailing empty paragraphs may overflow unseen, so the fit ends at the last visible text.
         const measureContentHeight = () => {
-          if (usesVisibleTextHeight) {
-            const paragraphs = Array.from(textContainer.children) as HTMLElement[];
-            for (let index = paragraphs.length - 1; index >= 0; index--) {
-              const paragraph = paragraphs[index];
-              if (paragraph.textContent?.trim() || paragraph.querySelector('img, svg')) {
-                if (index === paragraphs.length - 1) break;
-                return (
-                  paragraph.offsetTop +
-                  paragraph.offsetHeight +
-                  (parseFloat(textContainer.style.paddingBottom) || 0)
-                );
-              }
-            }
-          }
-          return textContainer.scrollHeight;
+          const lastVisible = usesVisibleTextHeight
+            ? (trailingEmptyParagraphs()[0]?.previousElementSibling as HTMLElement | null)
+            : null;
+          return lastVisible
+            ? lastVisible.offsetTop +
+                lastVisible.offsetHeight +
+                (parseFloat(textContainer.style.paddingBottom) || 0)
+            : textContainer.scrollHeight;
         };
         const applyDynamicAutofit = () => {
           wrapper.style.width = baseWrapperWidth;
@@ -3400,6 +3405,13 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
               useNodes(nodesAtFontScale(largestFit), '');
               fittedByFontScale = true;
             }
+          }
+          if (usesVisibleTextHeight) {
+            const trailing = trailingEmptyParagraphs();
+            for (const paragraph of trailing) paragraph.style.display = '';
+            // Overflowing empty tails leave layout so the anchor places the visible text in the box.
+            const hideTrailing = textContainer.scrollHeight > textContainer.clientHeight;
+            for (const paragraph of trailing) paragraph.style.display = hideTrailing ? 'none' : '';
           }
           const containerW = textContainer.clientWidth;
           const containerH = textContainer.clientHeight;
