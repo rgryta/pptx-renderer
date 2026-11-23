@@ -875,3 +875,131 @@ describe('renderBackground', () => {
     expect(container.style.backgroundImage).toBe('');
   });
 });
+
+describe('renderBackground theme blipFill', () => {
+  const themeBlip = (blipChildren = '', fillMode = '<a:stretch><a:fillRect/></a:stretch>') =>
+    parseXml(
+      `<a:blipFill xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+                   xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+         <a:blip r:embed="rId1">${blipChildren}</a:blip>${fillMode}
+       </a:blipFill>`,
+    );
+
+  function themeBlipContext(
+    blipFill: SafeXmlNode,
+    themeRels?: Map<string, { type: string; target: string; targetMode?: string }>,
+    bgRefColor = '<a:srgbClr val="336699"/>',
+  ) {
+    const base = createMockRenderContext();
+    const ctx = createMockRenderContext({
+      masterPath: 'ppt/slideMasters/slideMaster1.xml',
+      slide: {
+        ...base.slide,
+        rels: new Map([['rId1', { type: 'image', target: '../media/slide.png' }]]),
+        background: bgRefXml(1003, bgRefColor),
+      },
+      theme: {
+        ...base.theme,
+        bgFillStyles: [
+          parseXml(
+            `<a:solidFill xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:schemeClr val="phClr"/></a:solidFill>`,
+          ),
+          parseXml(
+            `<a:solidFill xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:schemeClr val="phClr"/></a:solidFill>`,
+          ),
+          blipFill,
+        ],
+      },
+    });
+    ctx.presentation.masterToTheme.set('ppt/slideMasters/slideMaster1.xml', 'ppt/theme/theme1.xml');
+    if (themeRels) ctx.presentation.themeRels = new Map([['ppt/theme/theme1.xml', themeRels]]);
+    ctx.presentation.media.set('ppt/media/slide.png', new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
+    ctx.presentation.media.set('ppt/media/texture.png', new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
+    ctx.asyncTasks = [];
+    return ctx;
+  }
+
+  const textureRels = () => new Map([['rId1', { type: 'image', target: '../media/texture.png' }]]);
+
+  it('resolves the blip through theme rels, not slide rels with the same rId', () => {
+    const ctx = themeBlipContext(themeBlip(), textureRels());
+    const container = document.createElement('div');
+
+    renderBackground(ctx, container);
+
+    expect(container.style.backgroundColor).toBe('rgb(51, 102, 153)');
+    expect(container.style.backgroundImage).toBe(
+      `url("${ctx.mediaUrlCache.get('ppt/media/texture.png')}")`,
+    );
+    expect(ctx.mediaUrlCache.has('ppt/media/slide.png')).toBe(false);
+  });
+
+  it('keeps the flat bgRef colour without theme rels and never falls back to slide rels', () => {
+    const ctx = themeBlipContext(themeBlip());
+    const container = document.createElement('div');
+
+    renderBackground(ctx, container);
+
+    expect(container.style.backgroundColor).toBe('rgb(51, 102, 153)');
+    expect(container.style.backgroundImage).toBe('');
+    expect(ctx.mediaUrlCache.size).toBe(0);
+  });
+
+  it('ignores external theme relationships', () => {
+    const ctx = themeBlipContext(
+      themeBlip(),
+      new Map([
+        [
+          'rId1',
+          { type: 'image', target: 'https://media.example.test/t.png', targetMode: 'External' },
+        ],
+      ]),
+    );
+    ctx.externalMedia = 'allow';
+    const container = document.createElement('div');
+
+    renderBackground(ctx, container);
+
+    expect(container.style.backgroundImage).toBe('');
+  });
+
+  it('tiles a theme texture that carries an empty srcRect', () => {
+    const ctx = themeBlipContext(themeBlip('', '<a:srcRect/><a:tile/>'), textureRels());
+    const container = document.createElement('div');
+
+    renderBackground(ctx, container);
+
+    expect(container.style.backgroundImage).toMatch(/^url\(/);
+    expect(container.style.backgroundRepeat).toBe('repeat');
+    expect(container.querySelector('[data-pptx-background-crop]')).toBeNull();
+  });
+
+  it('keeps the flat bgRef colour when the duotone recolour fails', async () => {
+    const ctx = themeBlipContext(
+      themeBlip('<a:duotone><a:prstClr val="black"/><a:schemeClr val="phClr"/></a:duotone>'),
+      textureRels(),
+    );
+    const container = document.createElement('div');
+
+    renderBackground(ctx, container);
+    expect(ctx.asyncTasks).toHaveLength(1);
+    await Promise.all(ctx.asyncTasks!);
+
+    expect(container.style.backgroundColor).toBe('rgb(51, 102, 153)');
+    expect(container.style.backgroundImage).toBe('');
+  });
+
+  it('draws the plain texture when the duotone has no bgRef colour for phClr', () => {
+    const ctx = themeBlipContext(
+      themeBlip('<a:duotone><a:prstClr val="black"/><a:schemeClr val="phClr"/></a:duotone>'),
+      textureRels(),
+      '',
+    );
+    const container = document.createElement('div');
+
+    renderBackground(ctx, container);
+
+    expect(container.style.backgroundImage).toMatch(/^url\(/);
+    expect(ctx.asyncTasks).toHaveLength(0);
+  });
+});

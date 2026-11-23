@@ -17,6 +17,7 @@ import { isExternalTargetMode, RelEntry } from '../parser/RelParser';
 import { findMediaByTarget, findMediaByTargetAsync, getOrCreateBlobUrl } from '../utils/media';
 import { isAllowedExternalMediaUrl } from '../utils/urlSafety';
 import { splitTiledPatternFillCss } from './cssValues';
+import { createDuotoneBlobUrl, resolveDuotoneColors } from './ImageRenderer';
 
 let backgroundGradientIdCounter = 0;
 
@@ -373,6 +374,10 @@ function renderBgRef(bgRef: SafeXmlNode, ctx: RenderContext, container: HTMLElem
       return;
     }
     applyBackgroundFillCss(container, fillCss);
+    const themeFill = idx >= 1001 ? ctx.theme.bgFillStyles?.[idx - 1001] : undefined;
+    if (themeFill?.localName === 'blipFill') {
+      renderThemeBlipBackground(themeFill, bgRef, ctx, container);
+    }
     return;
   }
 
@@ -391,6 +396,47 @@ function renderBgRef(bgRef: SafeXmlNode, ctx: RenderContext, container: HTMLElem
   }
 }
 
+function renderThemeBlipBackground(
+  blipFill: SafeXmlNode,
+  bgRef: SafeXmlNode,
+  ctx: RenderContext,
+  container: HTMLElement,
+): void {
+  const themePath = ctx.presentation.masterToTheme.get(ctx.masterPath ?? '');
+  const themeRels = themePath ? ctx.presentation.themeRels?.get(themePath) : undefined;
+  const relId = blipRelId(blipFill.child('blip'));
+  const rel = relId ? themeRels?.get(relId) : undefined;
+  if (!themeRels || !rel || isExternalTargetMode(rel.targetMode)) return;
+
+  const duotone = blipFill.child('blip').child('duotone');
+  const colors =
+    duotone.exists() && bgRef.allChildren().length > 0
+      ? resolveDuotoneColors(duotone, ctx, bgRef)
+      : undefined;
+  if (!colors) {
+    renderBlipBackground(blipFill, ctx, container, themeRels);
+    return;
+  }
+
+  const { media, mediaResolver } = ctx.presentation;
+  const task = findMediaByTargetAsync(rel.target, media, mediaResolver)
+    .then(async (resolved) => {
+      if (!resolved || ctx.signal?.aborted) return;
+      const source = getOrCreateBlobUrl(resolved.mediaPath, resolved.data, ctx.mediaUrlCache);
+      const url = await createDuotoneBlobUrl(source, resolved.mediaPath, colors, ctx);
+      if (url && !ctx.signal?.aborted) applyBlipBackground(blipFill, container, url);
+    })
+    .catch(() => {
+      // Keep the flat bgRef colour when the texture cannot be decoded or recoloured.
+    });
+  ctx.asyncTasks?.push(task);
+  if (!ctx.asyncTasks) void task;
+}
+
+function blipRelId(blip: SafeXmlNode): string | undefined {
+  return blip.attr('embed') ?? blip.attr('r:embed') ?? blip.attr('link') ?? blip.attr('r:link');
+}
+
 /**
  * Render a blip (image) fill as a CSS background.
  */
@@ -400,11 +446,7 @@ function renderBlipBackground(
   container: HTMLElement,
   rels?: Map<string, RelEntry>,
 ): void {
-  const blip = blipFill.child('blip');
-  const embedId = blip.attr('embed') ?? blip.attr('r:embed');
-  const linkId = blip.attr('link') ?? blip.attr('r:link');
-  const relId = embedId ?? linkId;
-
+  const relId = blipRelId(blipFill.child('blip'));
   if (!relId) return;
 
   // Resolve image from rels + media (use provided rels or fall back to slide rels)
@@ -451,7 +493,7 @@ function renderBlipBackground(
 
 function applyBlipBackground(blipFill: SafeXmlNode, container: HTMLElement, url: string): void {
   const blipOpacity = resolveBlipOpacity(blipFill.child('blip'));
-  if (blipOpacity < 1 || blipFill.child('srcRect').exists()) {
+  if (blipOpacity < 1 || hasSourceCrop(blipFill.child('srcRect'))) {
     applyBlipBackgroundLayer(blipFill, container, url, blipOpacity);
     return;
   }
@@ -499,7 +541,7 @@ function applyBlipBackgroundLayer(
   applyBackgroundLayerDestination(layer, fillRect);
 
   const srcRect = blipFill.child('srcRect');
-  if (srcRect.exists()) {
+  if (hasSourceCrop(srcRect)) {
     layer.style.overflow = 'hidden';
     const cropLayer = document.createElement('div');
     cropLayer.setAttribute('data-pptx-background-crop', 'true');
@@ -603,6 +645,10 @@ function resolveBlipOpacity(blip: SafeXmlNode): number {
   }
 
   return Math.max(0, Math.min(1, alpha));
+}
+
+function hasSourceCrop(srcRect: SafeXmlNode): boolean {
+  return ['l', 't', 'r', 'b'].some((side) => pctAttr(srcRect, side) !== 0);
 }
 
 function pctAttr(node: SafeXmlNode, name: string): number {

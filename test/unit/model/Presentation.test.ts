@@ -388,6 +388,25 @@ describe('buildPresentation', () => {
     expect(pres.diagramRels?.has('ppt/diagrams/drawing2.xml')).toBe(false);
   });
 
+  it('keys theme part relationships by the theme part path', () => {
+    const pres = buildPresentation(
+      makeMinimalFiles({
+        themeRels: new Map([
+          [
+            'ppt/theme/_rels/theme1.xml.rels',
+            `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+              <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image3.png"/>
+            </Relationships>`,
+          ],
+        ]),
+      }),
+    );
+
+    expect(pres.themeRels?.get('ppt/theme/theme1.xml')?.get('rId1')?.target).toBe(
+      '../media/image3.png',
+    );
+  });
+
   it('resolves slide → layout → master → theme chain', () => {
     const pres = buildPresentation(makeMinimalFiles());
     const layoutPath = pres.slideToLayout.get(0);

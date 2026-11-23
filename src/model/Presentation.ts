@@ -29,6 +29,8 @@ export interface PresentationData {
   layouts: Map<string, LayoutData>;
   masters: Map<string, MasterData>;
   themes: Map<string, ThemeData>;
+  /** Relationships of theme parts keyed by theme part path. */
+  themeRels?: Map<string, Map<string, RelEntry>>;
   slideToLayout: Map<number, string>;
   layoutToMaster: Map<string, string>;
   masterToTheme: Map<string, string>;
@@ -212,9 +214,12 @@ export function buildPresentation(
 
   // --- Parse themes ---
   const themes = new Map<string, ThemeData>();
+  const themeRels = new Map<string, Map<string, RelEntry>>();
   for (const [themePath, themeXml] of files.themes) {
     const themeRoot = parseXml(themeXml);
     themes.set(themePath, parseTheme(themeRoot));
+    const relsXml = files.themeRels?.get(relsPathFor(themePath));
+    if (relsXml) themeRels.set(themePath, parseRels(relsXml));
   }
 
   // --- Parse slide masters and build master→theme mapping ---
@@ -403,6 +408,7 @@ export function buildPresentation(
     layouts,
     masters,
     themes,
+    themeRels,
     slideToLayout,
     layoutToMaster,
     masterToTheme,
