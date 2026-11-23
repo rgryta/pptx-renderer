@@ -1202,7 +1202,7 @@ describe('ShapeRenderer', () => {
     expect(textContainer!.style.height).toBe('60px');
   });
 
-  it('applies only dynamic normAutofit transform after explicit fontScale sizing', () => {
+  it('fits a stale normAutofit fontScale by font size with a 25% floor, never by transform', () => {
     const isFitContainer = (el: HTMLElement) =>
       el.style.display === 'flex' && el.style.flexDirection === 'column';
     const clientWidthSpy = vi
@@ -1252,13 +1252,11 @@ describe('ShapeRenderer', () => {
         (div) =>
           div.textContent?.includes('Scaled then measured') && div.style.flexDirection === 'column',
       ) as HTMLElement | undefined;
-      const scaleCount = textContainer?.style.transform.match(/scale\(/g)?.length ?? 0;
+      const span = textContainer?.querySelector('span') as HTMLSpanElement | null;
 
       expect(textContainer).toBeDefined();
-      expect(scaleCount).toBe(1);
-      expect(textContainer!.style.transform).toBe('scale(0.5)');
-      expect(textContainer!.style.width).toBe('200%');
-      expect(textContainer!.style.height).toBe('200%');
+      expect(span?.style.fontSize).toBe('6pt');
+      expect(textContainer!.style.transform).toBe('');
     } finally {
       clientWidthSpy.mockRestore();
       clientHeightSpy.mockRestore();
@@ -1267,7 +1265,7 @@ describe('ShapeRenderer', () => {
     }
   });
 
-  it('preserves textBoxBounds pixel dimensions when explicit normAutofit still needs dynamic scale', () => {
+  it('preserves textBoxBounds pixel dimensions when normAutofit needs dynamic scale', () => {
     const isFitContainer = (el: HTMLElement) =>
       el.style.display === 'flex' && el.style.flexDirection === 'column';
     const clientWidthSpy = vi
@@ -1305,7 +1303,7 @@ describe('ShapeRenderer', () => {
             <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
           </p:spPr>
           <p:txBody>
-            <a:bodyPr><a:normAutofit fontScale="50000"/></a:bodyPr>
+            <a:bodyPr><a:normAutofit/></a:bodyPr>
             <a:lstStyle/>
             <a:p><a:r><a:rPr sz="2400"/><a:t>Scaled bounded text</a:t></a:r></a:p>
           </p:txBody>
@@ -1322,7 +1320,7 @@ describe('ShapeRenderer', () => {
       const span = textContainer?.querySelector('span') as HTMLSpanElement | null;
 
       expect(textContainer).toBeDefined();
-      expect(span?.style.fontSize).toBe('12pt');
+      expect(span?.style.fontSize).toBe('24pt');
       expect(textContainer!.style.transform).toBe('scale(0.5)');
       expect(textContainer!.style.width).toBe('240px');
       expect(textContainer!.style.height).toBe('120px');

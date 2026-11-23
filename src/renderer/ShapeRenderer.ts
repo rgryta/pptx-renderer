@@ -144,6 +144,7 @@ import { findMediaByTarget, findMediaByTargetAsync, getOrCreateBlobUrl } from '.
 import { isAllowedExternalMediaUrl, isAllowedExternalUrl } from '../utils/urlSafety';
 import {
   getEffectiveBodyPrChild,
+  MIN_NORM_AUTOFIT_FONT_SCALE,
   parseNormAutofitFontScale,
   parseTextPercentage,
 } from './TextBodyProperties';
@@ -3367,7 +3368,12 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
           const savedJC = textContainer.style.justifyContent;
           const savedWhiteSpace = textContainer.style.whiteSpace;
           textContainer.style.justifyContent = 'flex-start';
-          if (fitsStaleFontScale) {
+          let fittedByFontScale = false;
+          if (
+            fitsStaleFontScale &&
+            textContainer.clientWidth > 0 &&
+            textContainer.clientHeight > 0
+          ) {
             const useNodes = (nodes: ChildNode[], lineHeight: string) => {
               textContainer.replaceChildren(...nodes);
               textContainer.style.lineHeight = lineHeight;
@@ -3381,26 +3387,25 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
               useNodes(nodesAtFontScale(fontScale), '');
               return fits();
             };
-            let largestFit: number | undefined = fitsAtFontScale(1) ? 1 : undefined;
-            if (largestFit === undefined && fitsAtFontScale(storedFontScale)) {
-              let fitting = storedFontScale;
+            let largestFit = MIN_NORM_AUTOFIT_FONT_SCALE;
+            if (fitsAtFontScale(1)) {
+              largestFit = 1;
+            } else if (fitsAtFontScale(MIN_NORM_AUTOFIT_FONT_SCALE)) {
               let overflowing = 1;
               for (let step = 0; step < 6; step++) {
-                const middle = (fitting + overflowing) / 2;
-                if (fitsAtFontScale(middle)) fitting = middle;
+                const middle = (largestFit + overflowing) / 2;
+                if (fitsAtFontScale(middle)) largestFit = middle;
                 else overflowing = middle;
               }
-              largestFit = fitting;
             }
+            useNodes(storedScaleNodes, baseLineHeight);
             if (
               largestFit === 1 ||
-              (largestFit !== undefined &&
-                largestFit >= storedFontScale + STALE_NORM_AUTOFIT_SCALE_MARGIN)
+              largestFit >= storedFontScale + STALE_NORM_AUTOFIT_SCALE_MARGIN ||
+              !fits()
             ) {
               useNodes(nodesAtFontScale(largestFit), '');
-            } else {
-              useNodes(storedScaleNodes, baseLineHeight);
-              if (largestFit !== undefined && !fits()) useNodes(nodesAtFontScale(largestFit), '');
+              fittedByFontScale = true;
             }
           }
           const containerW = textContainer.clientWidth;
@@ -3590,6 +3595,7 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
           ) {
             scale = containerH / wrappedContentH;
           }
+          if (fittedByFontScale) scale = 1;
           if (
             usesVisibleTextHeight &&
             containerH > 0 &&
@@ -3602,6 +3608,10 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
           if (scale < 1) {
             if (!textContainer.style.transform) {
               textContainer.style.transformOrigin = 'top left';
+            } else if (!/^(0px 0px|left top|top left)$/.test(textContainer.style.transformOrigin)) {
+              // Keep a centred counter-flip or rotation centred on the box, not the widened container.
+              const shift = -(1 - scale) * 50;
+              textContainer.style.transform = `translate(${shift}%, ${shift}%) ${textContainer.style.transform}`;
             }
             appendTransform(textContainer, `scale(${scale})`);
             textContainer.style.width = expandCssLengthForScale(baseWidth, scale);
