@@ -3798,6 +3798,33 @@ describe('renderImage', () => {
       expect(Number(image?.getAttribute('height'))).toBeCloseTo(142.857, 2);
     });
 
+    it.each([
+      ['', 'rotate(-6deg)'],
+      [' rot="600000" flipH="1"', 'rotate(-6deg) rotate(10deg) scaleX(-1)'],
+    ])('rolls a bevelled picture by the camera rev outside xfrm%s', (xfrmAttrs, transform) => {
+      const source = xmlNode(
+        `<pic xmlns="http://schemas.openxmlformats.org/drawingml/2006/main"
+              xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+          <nvPicPr><cNvPr id="92" name="Rolled 3D picture"/><nvPr/></nvPicPr>
+          <blipFill><blip r:embed="rId1"/><stretch><fillRect/></stretch></blipFill>
+          <spPr>
+            <xfrm${xfrmAttrs}><off x="0" y="0"/><ext cx="1905000" cy="952500"/></xfrm>
+            <prstGeom prst="rect"><avLst/></prstGeom>
+            <scene3d>
+              <camera prst="orthographicFront"><rot lat="0" lon="0" rev="360000"/></camera>
+              <lightRig rig="twoPt" dir="t"/>
+            </scene3d>
+            <sp3d extrusionH="0"><bevelT w="127000" h="127000" prst="circle"/></sp3d>
+          </spPr>
+        </pic>`,
+      );
+
+      const el = renderImage(parsePicNode(source), createCtxWithMedia());
+
+      expect(el.querySelector('[data-pptx-shape3d-bevel]')).toBeTruthy();
+      expect(el.style.transform).toBe(transform);
+    });
+
     it('keeps a degenerate srcRect crop on the ordinary flat picture path', () => {
       const ctx = createCtxWithMedia();
       const source = xmlNode(

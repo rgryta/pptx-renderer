@@ -23,6 +23,7 @@ import { renderCustomGeometry } from '../shapes/customGeometry';
 import { getPresetShapeClipPath } from '../shapes/presets';
 import { splitTiledPatternFillCss } from './cssValues';
 import {
+  applyStaticShape3DCameraRoll,
   applyStaticShape3DPicturePlane,
   appendStaticShape3DEffects,
   buildStaticShape3DPlan,
@@ -273,6 +274,7 @@ function renderImageUrl(
     },
     ctx,
   );
+  applyStaticShape3DCameraRoll(wrapper, shape3dPlan);
   if (tile.exists()) {
     wrapper.style.backgroundImage = `url("${url}")`;
     wrapper.style.backgroundRepeat = 'repeat';

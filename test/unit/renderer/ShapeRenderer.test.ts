@@ -7065,6 +7065,32 @@ describe('ShapeRenderer', () => {
     );
   });
 
+  it.each([
+    ['', 'rotate(-6deg)'],
+    [' flipH="1"', 'rotate(-6deg) scaleX(-1)'],
+  ])('rolls a bevelled shape by the camera rev outside xfrm%s', (xfrmAttrs, transform) => {
+    const xml = `
+      <p:sp xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+            xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+        <p:nvSpPr><p:cNvPr id="82" name="Rolled 3D round rectangle"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+        <p:spPr>
+          <a:xfrm${xfrmAttrs}><a:off x="0" y="0"/><a:ext cx="1905000" cy="952500"/></a:xfrm>
+          <a:prstGeom prst="roundRect"><a:avLst/></a:prstGeom>
+          <a:solidFill><a:srgbClr val="4472C4"/></a:solidFill>
+          <a:scene3d>
+            <a:camera prst="orthographicFront"><a:rot lat="0" lon="0" rev="360000"/></a:camera>
+            <a:lightRig rig="threePt" dir="t"/>
+          </a:scene3d>
+          <a:sp3d><a:bevelT w="127000" h="127000" prst="circle"/></a:sp3d>
+        </p:spPr>
+      </p:sp>`;
+
+    const el = renderShape(parseShapeNode(parseXml(xml)), createMockRenderContext());
+
+    expect(el.querySelector('[data-pptx-shape3d-bevel]')).toBeTruthy();
+    expect(el.style.transform).toBe(transform);
+  });
+
   it('treats a solid theme fill reference as eligible static 3D paint', () => {
     const xml = `
       <p:sp xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"

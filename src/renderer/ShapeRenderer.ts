@@ -160,6 +160,7 @@ import {
 } from './pathData';
 import {
   appendStaticShape3DEffects,
+  applyStaticShape3DCameraRoll,
   applyStaticShape3DTextPlane,
   buildStaticShape3DPlan,
   type StaticShape3DPlan,
@@ -2874,6 +2875,7 @@ export function renderShape(node: ShapeNodeData, ctx: RenderContext): HTMLElemen
         },
         ctx,
       );
+      applyStaticShape3DCameraRoll(wrapper, shape3dPlan);
       appendStaticShape3DEffects({
         svg,
         defs,
