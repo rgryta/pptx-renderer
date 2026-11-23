@@ -209,6 +209,7 @@ function parseDiagramFrame(
     const drawingXml = ctx.diagramDrawings.get(drawingPath);
     if (drawingXml) {
       const group = buildDiagramGroup(base, drawingXml);
+      group.diagramDrawingPath = drawingPath;
       const layoutId = relIds.attr('r:lo') ?? relIds.attr('lo');
       const layoutRel = layoutId ? ctx.rels.get(layoutId) : undefined;
       if (

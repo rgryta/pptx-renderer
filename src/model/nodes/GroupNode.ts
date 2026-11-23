@@ -13,6 +13,8 @@ export interface GroupNodeData extends BaseNodeData {
   shape3d?: Shape3DProperties;
   /** Layout identity resolved through a diagram frame's layout relationship. */
   diagramLayoutId?: string;
+  /** SmartArt drawing part whose relationships resolve this group's children. */
+  diagramDrawingPath?: string;
   childOffset: Position;
   childExtent: Size;
   /** @internal Raw XML nodes — opaque to consumers. Use serializePresentation() for JSON-safe data. */

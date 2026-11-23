@@ -43,6 +43,8 @@ export interface PresentationData {
   charts: Map<string, SafeXmlNode>;
   /** SmartArt fallback drawing parts keyed by part path (ppt/diagrams/drawing*.xml). */
   diagramDrawings?: Map<string, string>;
+  /** Relationships of SmartArt diagram parts keyed by part path. */
+  diagramRels?: Map<string, Map<string, RelEntry>>;
   /** Chart-local theme overrides keyed by chart part path. */
   chartThemes?: Map<string, ThemeData>;
   /** Chart style parts keyed by chart part path. */
@@ -378,6 +380,12 @@ export function buildPresentation(
     slides.push(slideData);
   }
 
+  const diagramRels = new Map<string, Map<string, RelEntry>>();
+  for (const diagramPath of files.diagramDrawings.keys()) {
+    const relsXml = files.diagramRels?.get(relsPathFor(diagramPath));
+    if (relsXml) diagramRels.set(diagramPath, parseRels(relsXml));
+  }
+
   // --- Table styles ---
   let tableStyles: SafeXmlNode | undefined;
   if (files.tableStyles) {
@@ -406,6 +414,7 @@ export function buildPresentation(
     defaultTextStyle: defaultTextStyle.exists() ? defaultTextStyle : undefined,
     charts,
     diagramDrawings: files.diagramDrawings,
+    diagramRels,
     chartThemes,
     chartStyles,
     chartColorStyles,

@@ -1975,6 +1975,64 @@ describe('renderGroup — mixed child types', () => {
     expect(text).toBe('Matched diagram drawing');
   });
 
+  describe('SmartArt picture fills', () => {
+    const pictureDrawingXml = `
+      <dsp:drawing xmlns:dsp="http://schemas.microsoft.com/office/drawing/2008/diagram"
+                   xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+                   xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+        <dsp:spTree>
+          <dsp:sp>
+            <dsp:nvSpPr><dsp:cNvPr id="81" name="Picture Ellipse"/><dsp:nvPr/></dsp:nvSpPr>
+            <dsp:spPr>
+              <a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/></a:xfrm>
+              <a:prstGeom prst="ellipse"><a:avLst/></a:prstGeom>
+              <a:blipFill><a:blip r:embed="rId1"/><a:stretch><a:fillRect/></a:stretch></a:blipFill>
+            </dsp:spPr>
+          </dsp:sp>
+        </dsp:spTree>
+      </dsp:drawing>
+    `;
+
+    function renderPictureDiagram(ctx: RenderContext): HTMLElement {
+      ctx.slide.rels.set('rId1', { type: 'image', target: '../media/image1.png' });
+      (ctx.presentation as any).diagramDrawings = new Map([
+        ['ppt/diagrams/drawing7.xml', pictureDrawingXml],
+      ]);
+      ctx.presentation.media.set('ppt/media/image1.png', new Uint8Array([1]));
+      ctx.presentation.media.set('ppt/media/image2.png', new Uint8Array([2]));
+      const renderNode = (child: any, childCtx: RenderContext): HTMLElement | null =>
+        child.nodeType === 'group'
+          ? renderGroup(child, childCtx, renderNode)
+          : renderShape(child, childCtx);
+      return renderGroup(makeGroup([makeDiagramFrameXml()]), ctx, renderNode);
+    }
+
+    it('resolves blip fills through the drawing relationships, not the slide relationships', () => {
+      const ctx = makeCtxWithDiagram();
+      ctx.presentation.diagramRels = new Map([
+        [
+          'ppt/diagrams/drawing7.xml',
+          new Map([['rId1', { type: 'image', target: '../media/image2.png' }]]),
+        ],
+      ]);
+
+      const el = renderPictureDiagram(ctx);
+
+      const hrefs = Array.from(el.querySelectorAll('image')).map((img) => img.getAttribute('href'));
+      expect(hrefs).toEqual([ctx.mediaUrlCache.get('ppt/media/image2.png')]);
+      expect(ctx.mediaUrlCache.has('ppt/media/image1.png')).toBe(false);
+    });
+
+    it('renders no picture when the drawing has no relationships part', () => {
+      const ctx = makeCtxWithDiagram();
+
+      const el = renderPictureDiagram(ctx);
+
+      expect(el.querySelectorAll('image')).toHaveLength(0);
+      expect(ctx.mediaUrlCache.size).toBe(0);
+    });
+  });
+
   it('skips unknown children while rendering known ones in the same group', () => {
     const children = [makeUnknownTagXml(), makeSpXml('10'), makeUnknownTagXml(), makePicXml('11')];
     const group = makeGroup(children);
