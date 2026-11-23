@@ -131,59 +131,87 @@ function splitFormatSections(formatCode: string): string[] {
   return sections;
 }
 
-function normalizeNumericFormatSection(section: string): string {
-  const withoutDirectives = section.replace(/\[[^\]]+\]/g, '');
-  let normalized = '';
+const LITERAL_CHARS = new Set('$-+/():!^&\'~{}<>= €£¥');
+const MAX_FRACTION_DIGITS = 20;
+const MAX_INTEGER_DIGITS = 21;
 
-  for (let i = 0; i < withoutDirectives.length; i++) {
-    const ch = withoutDirectives[i];
+interface NumericFormatSection {
+  prefix: string;
+  pattern: string;
+  suffix: string;
+  percent: number;
+}
+
+function tokenizeNumericFormatSection(section: string): NumericFormatSection | undefined {
+  const parsed: NumericFormatSection = { prefix: '', pattern: '', suffix: '', percent: 0 };
+  const addLiteral = (text: string) => {
+    if (parsed.pattern) parsed.suffix += text;
+    else parsed.prefix += text;
+  };
+
+  for (let i = 0; i < section.length; i++) {
+    const ch = section[i];
 
     if (ch === '"') {
+      const close = section.indexOf('"', i + 1);
+      const end = close === -1 ? section.length : close;
+      addLiteral(section.slice(i + 1, end));
+      i = end;
+    } else if (ch === '\\') {
+      if (i + 1 < section.length) addLiteral(section[++i]);
+    } else if (ch === '_' || ch === '*') {
       i++;
-      while (i < withoutDirectives.length && withoutDirectives[i] !== '"') i++;
-      continue;
+    } else if (ch === '[') {
+      const close = section.indexOf(']', i);
+      if (close === -1) return undefined;
+      const directive = section.slice(i + 1, close);
+      if (/^[<>=]/.test(directive)) return undefined;
+      if (directive.startsWith('$')) addLiteral(directive.slice(1).split('-')[0]);
+      i = close;
+    } else if ('0#?.,'.includes(ch)) {
+      if (parsed.suffix) return undefined;
+      parsed.pattern += ch;
+    } else if (ch === '%') {
+      parsed.percent++;
+      addLiteral(ch);
+    } else if (LITERAL_CHARS.has(ch)) {
+      addLiteral(ch);
+    } else {
+      return undefined;
     }
-
-    if (ch === '\\') {
-      if (i + 1 < withoutDirectives.length) normalized += withoutDirectives[++i];
-      continue;
-    }
-
-    if (ch === '_' || ch === '*') {
-      i++;
-      continue;
-    }
-
-    normalized += ch;
   }
 
-  return normalized.trim();
+  return parsed.pattern && !/[0#?]/.test(parsed.pattern) ? undefined : parsed;
+}
+
+function formatNumericPattern(value: number, pattern: string): string {
+  const scaleCommas = pattern.match(/,+$/)?.[0].length ?? 0;
+  const core = pattern.slice(0, pattern.length - scaleCommas);
+  const [intPart, fracPart = ''] = core.split('.');
+  const scaled = scaleCommas ? parseFloat((value / 1000 ** scaleCommas).toPrecision(12)) : value;
+  const intZeros = intPart.split('0').length - 1;
+  const formatted = scaled.toLocaleString('en-US', {
+    useGrouping: intPart.includes(','),
+    minimumIntegerDigits: Math.min(Math.max(intZeros, 1), MAX_INTEGER_DIGITS),
+    minimumFractionDigits: Math.min(fracPart.split('0').length - 1, MAX_FRACTION_DIGITS),
+    maximumFractionDigits: Math.min(fracPart.replace(/,/g, '').length, MAX_FRACTION_DIGITS),
+  });
+  return intZeros === 0 && formatted.startsWith('0') ? formatted.slice(1) : formatted;
 }
 
 function formatOfficeNumber(value: number, formatCode: string): string | undefined {
   const sections = splitFormatSections(formatCode);
   const useNegativeSection = value < 0 && sections.length > 1;
-  const section = useNegativeSection ? sections[1] : sections[0];
-  const normalized = normalizeNumericFormatSection(section);
+  const sectionIndex = useNegativeSection ? 1 : value === 0 && sections.length > 2 ? 2 : 0;
+  const parsed = tokenizeNumericFormatSection(sections[sectionIndex]);
+  if (!parsed || (!parsed.pattern && sectionIndex === 0)) return undefined;
 
-  if (!/[#0]/.test(normalized) || (!normalized.includes(',') && sections.length === 1)) {
-    return undefined;
-  }
-
-  const decimalMatch = normalized.match(/\.(0+|#+)/);
-  const decimals = decimalMatch ? decimalMatch[1].length : 0;
-  const useThousands = normalized.includes(',');
-  const numericValue = useNegativeSection ? Math.abs(value) : value;
-  const formatted = numericValue.toLocaleString('en-US', {
-    useGrouping: useThousands,
-    minimumFractionDigits: decimalMatch?.[1].includes('0') ? decimals : 0,
-    maximumFractionDigits: decimals,
-  });
-
-  if (!useNegativeSection) return formatted;
-  if (normalized.includes('(') && normalized.includes(')')) return `(${formatted})`;
-  if (normalized.includes('-')) return `-${formatted}`;
-  return formatted;
+  const magnitude = Math.abs(value) * 100 ** parsed.percent;
+  const number = parsed.pattern
+    ? formatNumericPattern(parseFloat(magnitude.toPrecision(12)), parsed.pattern)
+    : '';
+  const sign = value < 0 && !useNegativeSection ? '-' : '';
+  return `${sign}${parsed.prefix}${number}${parsed.suffix}`.trim();
 }
 
 export function formatValue(value: number, formatCode: string | undefined): string {
@@ -192,15 +220,15 @@ export function formatValue(value: number, formatCode: string | undefined): stri
     return parseFloat(value.toFixed(2)).toString();
   }
 
+  const officeNumber = formatOfficeNumber(value, formatCode);
+  if (officeNumber !== undefined) return officeNumber;
+
   if (formatCode.includes('%')) {
     const match = formatCode.match(/0\.(0+)%/);
     const decimals = match ? match[1].length : 0;
     const pctValue = parseFloat((value * 100).toPrecision(12));
     return `${pctValue.toFixed(decimals)}%`;
   }
-
-  const officeNumber = formatOfficeNumber(value, formatCode);
-  if (officeNumber !== undefined) return officeNumber;
 
   const decMatch = formatCode.match(/\.(0+|#+)/);
   if (decMatch) {

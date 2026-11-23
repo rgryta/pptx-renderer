@@ -4746,9 +4746,8 @@ describe('ChartRenderer', () => {
       const series = (option.series as any[])?.[0];
       const formatter = series?.label?.formatter;
       expect(typeof formatter).toBe('function');
-      // 42.5 with format "0.00" → "42.5" (trailing zero stripped by parseFloat)
       const result = formatter({ value: 42.5 });
-      expect(result).toBe('42.5');
+      expect(result).toBe('42.50');
     });
 
     it('should format integer values with formatCode "#,##0"', () => {
@@ -5663,9 +5662,39 @@ describe('ChartRenderer', () => {
       // The axis label should have a formatter function
       expect(yAxis?.axisLabel?.formatter).toBeDefined();
       expect(typeof yAxis.axisLabel.formatter).toBe('function');
-      // Test the formatter: 42.5 with "0.00" → "42.5"
       const result = yAxis.axisLabel.formatter(42.5);
-      expect(result).toBe('42.5');
+      expect(result).toBe('42.50');
+    });
+
+    it('formats a General source-linked value axis with the first series format code', () => {
+      const xml = `<c:chartSpace
+        xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"
+        xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+        <c:chart>
+          <c:autoTitleDeleted val="1"/>
+          <c:plotArea>
+            <c:barChart>
+              <c:barDir val="col"/><c:grouping val="clustered"/>
+              <c:ser>
+                <c:idx val="0"/><c:order val="0"/>
+                <c:cat><c:strRef><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>A</c:v></c:pt></c:strCache></c:strRef></c:cat>
+                <c:val><c:numRef><c:numCache><c:formatCode>"$"#,##0</c:formatCode><c:ptCount val="1"/><c:pt idx="0"><c:v>75</c:v></c:pt></c:numCache></c:numRef></c:val>
+              </c:ser>
+              <c:axId val="1"/><c:axId val="2"/>
+            </c:barChart>
+            <c:catAx><c:axId val="1"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="b"/><c:tickLblPos val="nextTo"/><c:crossAx val="2"/></c:catAx>
+            <c:valAx>
+              <c:axId val="2"/><c:scaling><c:orientation val="minMax"/></c:scaling>
+              <c:delete val="0"/><c:axPos val="l"/><c:tickLblPos val="nextTo"/>
+              <c:numFmt formatCode="General" sourceLinked="1"/>
+              <c:crossAx val="1"/>
+            </c:valAx>
+          </c:plotArea>
+        </c:chart>
+      </c:chartSpace>`;
+
+      const { option } = parseChartOption(xml);
+      expect((option.yAxis as any).axisLabel.formatter(1500)).toBe('$1,500');
     });
   });
 
@@ -8988,7 +9017,7 @@ describe('ChartRenderer', () => {
     });
 
     it.each([
-      [undefined, 1.234, '1.23'],
+      [undefined, 1.234, '1'],
       ['0.00', 1.234, '1.23'],
       ['#,##0', 1.6, '2'],
       ['[Red]weird', 1.234, '1.23'],

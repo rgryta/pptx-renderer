@@ -1061,18 +1061,15 @@ function buildBarChartOption(
   };
   applyAxisInfo(categoryAxisDef, categoryAxis, 'category');
 
-  // Use a series-derived axis/tooltip format only when all series share it.
   const sharedSeriesFormat = getSharedSeriesFormatCode(seriesArr);
-  const pctFormat =
-    (isPercentStacked ? '0%' : undefined) ||
-    valueAxis.numFmt ||
-    (sharedSeriesFormat?.includes('%') ? sharedSeriesFormat : undefined);
+  const explicitAxisFormat = (isPercentStacked ? '0%' : undefined) || valueAxis.numFmt;
+  const valueAxisFormat = explicitAxisFormat || seriesArr[0]?.formatCode;
   const valueAxisDef: Record<string, unknown> = {
     type: 'value',
-    ...(pctFormat
+    ...(valueAxisFormat
       ? {
           axisLabel: {
-            formatter: (val: number) => formatValue(val, pctFormat),
+            formatter: (val: number) => formatValue(val, valueAxisFormat),
           },
         }
       : {}),
@@ -1109,7 +1106,7 @@ function buildBarChartOption(
   // additional 28 px inset shortens horizontal bars compared with Office's
   // automatic plot area, so use the regular Cartesian edge inset here.
   const gridRight = isHorizontal ? 10 + Math.ceil(outsideLabelPx) : useCompactDefaults ? 15 : 10;
-  const tooltipFmt = pctFormat || sharedSeriesFormat;
+  const tooltipFmt = explicitAxisFormat || sharedSeriesFormat;
   const baseGridBottom = getGridBottomPx(legendInfo);
   const gridBottom =
     isHorizontal && baseGridBottom === 20 ? 23 : baseGridBottom + (useCompactDefaults ? 3 : 0);
@@ -1316,16 +1313,14 @@ function buildLineChartOption(
   const { valueAxis, categoryAxis } = parseAxes(plotArea, ctx, chartTypeNode);
 
   const sharedSeriesFormat = getSharedSeriesFormatCode(seriesArr);
-  const pctFormat =
-    (isPercentStacked ? '0%' : undefined) ||
-    valueAxis.numFmt ||
-    (sharedSeriesFormat?.includes('%') ? sharedSeriesFormat : undefined);
+  const explicitAxisFormat = (isPercentStacked ? '0%' : undefined) || valueAxis.numFmt;
+  const valueAxisFormat = explicitAxisFormat || seriesArr[0]?.formatCode;
   const yAxisDef: Record<string, unknown> = {
     type: 'value',
-    ...(pctFormat
+    ...(valueAxisFormat
       ? {
           axisLabel: {
-            formatter: (val: number) => formatValue(val, pctFormat),
+            formatter: (val: number) => formatValue(val, valueAxisFormat),
           },
         }
       : {}),
@@ -1351,7 +1346,7 @@ function buildLineChartOption(
   const legendTopPx = getLegendTopPx(!!titleOption, legendInfo);
   const compactGridLeft = isStacked && !isArea ? 12 : 14;
   const gridLeft = valueAxis.deleted ? 4 : useCompactDefaults ? compactGridLeft : 18;
-  const tooltipFmt = pctFormat || sharedSeriesFormat;
+  const tooltipFmt = explicitAxisFormat || sharedSeriesFormat;
   const gridBottom = getGridBottomPx(legendInfo) + (useCompactDefaults ? 3 : 0);
   const containLabel = !hasManualGrid(manualGrid);
   const legendEntries = seriesArr.map((s, idx) => ({ series: s, idx }));
