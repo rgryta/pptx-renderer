@@ -5019,7 +5019,7 @@ describe('ChartRenderer', () => {
           '0.00',
         );
         expect(series.label.formatter({ name: 'C0', value: 61.69, percent: 61.69 })).toBe(
-          '61.69 62%',
+          '61.69\n62%',
         );
       });
 
@@ -5038,6 +5038,89 @@ describe('ChartRenderer', () => {
         const series = (parseChartOption(xml).option.series as any[])[0];
         expect(series.label.fontSize).toBe(18.67);
         expect(series.data[1].label.fontSize).toBe(18.67);
+      });
+    });
+
+    describe('label separator and outside label fit', () => {
+      const catPct = (extra = '') =>
+        `<c:dLbls>${extra}<c:showCatName val="1"/><c:showPercent val="1"/></c:dLbls>`;
+      const pieSeries = (serDLbls: string, names: string[] = ['Completed', 'Open']) => {
+        let xml = buildLabelChartXml({ chartType: 'pieChart', serDLbls, values: [46, 54] });
+        names.forEach((name, i) => {
+          xml = xml.replace(`<c:v>C${i}</c:v>`, `<c:v>${name}</c:v>`);
+        });
+        return xml;
+      };
+      const chartSize = { w: 400, h: 300 };
+      const sizedSeries = (xml: string) =>
+        (
+          parseChartXml(parseXml(xml), createMockRenderContext(), undefined, chartSize).option
+            .series as any[]
+        )[0];
+
+      it('puts each pie label part on its own line without a separator', () => {
+        const series = (parseChartOption(pieSeries(catPct())).option.series as any[])[0];
+        expect(series.label.formatter({ name: 'Completed', value: 46 })).toBe('Completed\n46%');
+      });
+
+      it.each([
+        ['; ', 'Completed; 46%'],
+        ['', 'Completed46%'],
+        [' ', 'Completed 46%'],
+      ])('honours the pie separator %j', (separator, want) => {
+        const xml = pieSeries(catPct(`<c:separator>${separator}</c:separator>`));
+        const series = (parseChartOption(xml).option.series as any[])[0];
+        expect(series.label.formatter({ name: 'Completed', value: 46 })).toBe(want);
+      });
+
+      it('gives per-point labels the series separator unless they set their own', () => {
+        const xml = pieSeries(`<c:dLbls>
+          <c:dLbl><c:idx val="0"/><c:showCatName val="1"/><c:showPercent val="1"/></c:dLbl>
+          <c:dLbl><c:idx val="1"/><c:separator>, </c:separator><c:showCatName val="1"/><c:showPercent val="1"/></c:dLbl>
+          <c:separator>; </c:separator>
+        </c:dLbls>`);
+        const series = (parseChartOption(xml).option.series as any[])[0];
+        expect(series.data[0].label.formatter({ name: 'Completed', value: 46 })).toBe(
+          'Completed; 46%',
+        );
+        expect(series.data[1].label.formatter({ name: 'Open', value: 54 })).toBe('Open, 54%');
+      });
+
+      it('wraps outside pie labels instead of truncating them', () => {
+        const series = (parseChartOption(pieSeries(catPct())).option.series as any[])[0];
+        expect(series.label.overflow).toBe('break');
+      });
+
+      it('keeps the space join on line labels and honours an explicit separator', () => {
+        const lineLabel = (serDLbls: string) =>
+          (
+            parseChartOption(buildLabelChartXml({ chartType: 'lineChart', serDLbls, values: [3] }))
+              .option.series as any[]
+          )[0].label.formatter({ name: 'C0', value: 3, seriesName: 'S' });
+        const serVal = (extra = '') =>
+          `<c:dLbls>${extra}<c:showSerName val="1"/><c:showVal val="1"/></c:dLbls>`;
+        expect(lineLabel(serVal())).toBe('S 3');
+        expect(lineLabel(serVal('<c:separator>\n</c:separator>'))).toBe('S\n3');
+      });
+
+      it('shrinks the pie so wide outside labels stay inside the chart box', () => {
+        const name = 'Completed tasks';
+        const series = sizedSeries(pieSeries(catPct(), [name, 'Open']));
+        const radiusPx = (parseFloat(series.radius) / 100) * (chartSize.h / 2);
+        const cx = chartSize.w / 2;
+        expect(parseFloat(series.radius)).toBeLessThan(78);
+        expect(radiusPx + 50 + 10 + estimateTextWidthPx(name, 10)).toBeLessThanOrEqual(cx);
+        expect(chartSize.h * 0.55 + radiusPx + 15 + 12).toBeLessThanOrEqual(chartSize.h);
+      });
+
+      it('never shrinks a labelled pie below 30%', () => {
+        const series = sizedSeries(pieSeries(catPct(), ['Completed'.repeat(10), 'Open']));
+        expect(series.radius).toBe('30%');
+      });
+
+      it('keeps the default radius for inside labels', () => {
+        const xml = pieSeries(catPct('<c:dLblPos val="ctr"/>'), ['Completed'.repeat(10), 'Open']);
+        expect(sizedSeries(xml).radius).toBe('78%');
       });
     });
   });
@@ -5544,7 +5627,7 @@ describe('ChartRenderer', () => {
       expect(typeof formatter).toBe('function');
       // Invoke: showCatName → name, showVal with % format → "45.0%", showPercent → "45%"
       const result = formatter({ name: 'East', value: 0.45, percent: 45 });
-      expect(result).toBe('East 45.0% 45%');
+      expect(result).toBe('East\n45.0%\n45%');
     });
   });
 
@@ -7833,7 +7916,7 @@ describe('ChartRenderer', () => {
       expect(point.label.position).toBe('inside');
       expect(point.label.color).toBe('#FF0000');
       expect(point.label.fontSize).toBe(18.67);
-      expect(point.label.formatter({ name: 'B', value: 75, percent: 75 })).toBe('B 75%');
+      expect(point.label.formatter({ name: 'B', value: 75, percent: 75 })).toBe('B\n75%');
       expect(
         series.labelLayout({ dataIndex: 1, rect: { x: 0, y: 0, width: 400, height: 300 } }),
       ).toEqual({
@@ -8771,7 +8854,7 @@ describe('ChartRenderer', () => {
       expect(point.label.padding[2]).toBeCloseTo(28.8);
       expect(point.label.padding[3]).toBeCloseTo(38.4);
       expect(point.label.formatter({ name: 'A', value: 25, percent: 100 })).toBe(
-        'Series One A 25 100%',
+        'Series One\nA\n25\n100%',
       );
       expect(series.labelLayout({ dataIndex: 0 })).toEqual({
         x: '10%',

@@ -212,6 +212,7 @@ function computePieLayout(
   chartSize?: ChartPixelSize,
   explosionOffsetPx = 0,
   titleBandPx = 0,
+  outsideLabelPx: PixelBox = { w: 0, h: 0 },
 ): { center: [string, string]; radius: [string, string] | string } {
   const placement = getLegendPlacement(legendInfo);
   let center: [string, string] = ['50%', '55%'];
@@ -242,7 +243,14 @@ function computePieLayout(
     const centerYPx = titleBandPx + (parseFloat(center[1]) / 100) * (chartSize.h - titleBandPx);
     center = [center[0], `${Math.round(centerYPx)}px`];
   }
-  outerRadius = fitPieRadiusPct(outerRadius, center, chartSize, explosionOffsetPx, titleBandPx);
+  outerRadius = fitPieRadiusPct(
+    outerRadius,
+    center,
+    chartSize,
+    explosionOffsetPx,
+    titleBandPx,
+    outsideLabelPx,
+  );
 
   if (!isDoughnut) {
     return { center, radius: `${outerRadius}%` };
@@ -252,22 +260,72 @@ function computePieLayout(
   return { center, radius: [`${innerRadius}%`, `${outerRadius}%`] };
 }
 
-/** ECharts sizes a percentage pie radius against half the shorter side; keep the disc inside the chart box below the title band. */
+type PixelBox = { w: number; h: number };
+
+const PIE_LABEL_REACH_X_PX = 15 + 30 + 5; // ECharts pie defaults: labelLine length + length2 + distanceToLabelLine
+const PIE_LABEL_REACH_Y_PX = 15;
+const PIE_LABEL_LINE_HEIGHT = 1.2;
+const PIE_MIN_LABEL_FIT_RADIUS_PCT = 30;
+
+/** ECharts sizes a percentage pie radius against half the shorter side; keep the disc and its outside labels inside the chart box below the title band. */
 function fitPieRadiusPct(
   radiusPct: number,
   center: [string, string],
   chartSize: ChartPixelSize | undefined,
   explosionOffsetPx: number,
   topPx = 0,
+  outsideLabelPx: PixelBox = { w: 0, h: 0 },
 ): number {
   if (!chartSize || !(chartSize.w > 0) || !(chartSize.h > 0)) return radiusPct;
   const cx = (parseFloat(center[0]) / 100) * chartSize.w;
   const cy = center[1].endsWith('px')
     ? parseFloat(center[1])
     : (parseFloat(center[1]) / 100) * chartSize.h;
-  const roomPx = Math.min(cx, chartSize.w - cx, cy - topPx, chartSize.h - cy) - explosionOffsetPx;
+  const roomXPx = Math.min(cx, chartSize.w - cx) - explosionOffsetPx;
+  const roomYPx = Math.min(cy - topPx, chartSize.h - cy) - explosionOffsetPx;
   const halfShortSide = Math.min(chartSize.w, chartSize.h) / 2;
-  return Math.min(radiusPct, Math.floor((roomPx / halfShortSide) * 100));
+  const discPct = Math.min(
+    radiusPct,
+    Math.floor((Math.min(roomXPx, roomYPx) / halfShortSide) * 100),
+  );
+  if (!(outsideLabelPx.w > 0)) return discPct;
+  const bleedMarginPx = Math.min(chartSize.w, chartSize.h) > 200 ? 10 : 2;
+  const labelRoomPx = Math.min(
+    roomXPx - PIE_LABEL_REACH_X_PX - bleedMarginPx - outsideLabelPx.w,
+    roomYPx - PIE_LABEL_REACH_Y_PX - outsideLabelPx.h / 2,
+  );
+  const labelPct = Math.floor((labelRoomPx / halfShortSide) * 100);
+  return Math.min(discPct, Math.max(PIE_MIN_LABEL_FIT_RADIUS_PCT, labelPct));
+}
+
+function estimatePieOutsideLabelPx(
+  metas: {
+    series: SeriesData;
+    sharedLabels: DataLabelConfig | undefined;
+    pointOverrides: Map<number, Partial<DataLabelConfig>>;
+  }[],
+  defaultFs: number | undefined,
+): PixelBox {
+  const box: PixelBox = { w: 0, h: 0 };
+  for (const { series, sharedLabels, pointOverrides } of metas) {
+    const total = series.values.reduce((sum, v) => sum + (v || 0), 0);
+    series.categories.forEach((cat, i) => {
+      const cfg = mergeDataLabelConfig(sharedLabels, pointOverrides.get(i));
+      const label = buildPieLabelOption(cfg, series.formatCode, series.name, total);
+      if (!cfg || !label || label.position !== 'outside' || cfg.manualLayout) return;
+      const formatter = label.formatter as (params: { name: string; value: number }) => string;
+      const lines = formatter({ name: cat || `Item ${i + 1}`, value: series.values[i] ?? 0 }).split(
+        '\n',
+      );
+      const fontSize = cfg.fontSize ?? defaultFs ?? 10;
+      const widthFactor = cfg.bold ? BOLD_TEXT_WIDTH_FACTOR : 1;
+      const [top, right, bottom, left] = cfg.padding ?? [0, 0, 0, 0];
+      const textW = Math.max(...lines.map((line) => estimateTextWidthPx(line, fontSize)));
+      box.w = Math.max(box.w, textW * widthFactor + left + right);
+      box.h = Math.max(box.h, lines.length * fontSize * PIE_LABEL_LINE_HEIGHT + top + bottom);
+    });
+  }
+  return box;
 }
 
 function pieExplosionToOffset(explosion: number, isDoughnut = false): number {
@@ -637,6 +695,7 @@ function mergeDataLabelConfig(
     borderColor: base?.borderColor,
     borderWidth: base?.borderWidth,
     padding: base?.padding,
+    separator: base?.separator,
     ...override,
   };
 }
@@ -706,8 +765,9 @@ function buildPieLabelOption(
         const share = seriesTotal ? params.value / seriesTotal : 0;
         parts.push(formatValue(share, percentCode ?? '0%'));
       }
-      return parts.join(' ');
+      return parts.join(labelCfg.separator ?? '\n');
     },
+    overflow: 'break' as const,
     fontSize: labelCfg.fontSize ?? 10,
     ...(labelCfg.bold === true ? { fontWeight: 'bold' as const } : {}),
     ...(labelCfg.color ? { color: labelCfg.color } : {}),
@@ -1155,7 +1215,7 @@ function buildLineChartOption(
           if (labelCfg.showPercent && typeof params?.percent === 'number') {
             parts.push(`${params.percent}%`);
           }
-          return parts.join(' ');
+          return parts.join(labelCfg.separator ?? ' ');
         },
       };
       return labelCfg.fontSize !== undefined ? markExplicitFontSize(lineLabel) : lineLabel;
@@ -1403,6 +1463,7 @@ function buildPieChartOption(
     chartSize,
     explosionOffsetPx,
     titleBandPx,
+    estimatePieOutsideLabelPx(seriesLabelMeta, defaultFs),
   );
   const startAngle = mapFirstSliceAngle(chartTypeNode.child('firstSliceAng').numAttr('val'));
 
