@@ -42,6 +42,7 @@ const renderFit = (
       return {
         fontSize: getComputedStyle(span).fontSize,
         transform: container.style.transform,
+        overflowY: getComputedStyle(container).overflowY,
         overflow: Math.max(...rects.map((rect) => rect.bottom)) - box.bottom,
         underflow: box.top - Math.min(...rects.map((rect) => rect.top)),
       };
@@ -73,27 +74,41 @@ test('stored fontScale that fits while 100% overflows stays as stored', async ({
   expect(result.transform).toBe('');
 });
 
-for (const [name, body, size, transform, maxFontSize, heightPx] of [
-  ['without a stored scale', '<a:normAutofit/>', 1000, /^scale\(0\.9\d*\)$/, 13.34, 180],
-  [
-    'after a stored scale',
-    '<a:normAutofit fontScale="85000" lnSpcReduction="10000"/>',
-    1200,
-    /^$/,
-    13.6,
-    175,
-  ],
-] as const) {
-  test(`normAutofit text slightly taller than the box shrinks to fit ${name}`, async ({ page }) => {
+for (const heightPx of [189, 180]) {
+  test(`normAutofit without a stored scale keeps 100% for an overflow under 10% at ${heightPx}px`, async ({
+    page,
+  }) => {
     await page.goto('/test/browser/blank.html');
-    const result = await renderFit(page, body, paragraphs(12, size), heightPx);
-    expect(result.transform).toMatch(transform);
-    expect(parseFloat(result.fontSize)).toBeLessThan(maxFontSize);
-    expect(result.overflow).toBeLessThanOrEqual(1);
+    const result = await renderFit(page, '<a:normAutofit/>', paragraphs(12, 1000), heightPx);
+    expect(result).toMatchObject({ fontSize: '13.3333px', transform: '', overflowY: 'visible' });
+    expect(result.overflow).toBeGreaterThan(0);
   });
 }
 
-test('stale stored fontScale that overflows at every font scale floors at 25% without a transform', async ({
+test('normAutofit text over 10% taller than the box shrinks to fit without a stored scale', async ({
+  page,
+}) => {
+  await page.goto('/test/browser/blank.html');
+  const result = await renderFit(page, '<a:normAutofit/>', paragraphs(12, 1000), 170);
+  expect(result.transform).toMatch(/^scale\(0\.8\d*\)$/);
+  expect(result.fontSize).toBe('13.3333px');
+  expect(result.overflow).toBeLessThanOrEqual(1);
+});
+
+test('stored fontScale that overflows slightly keeps the stored render unclipped', async ({
+  page,
+}) => {
+  await page.goto('/test/browser/blank.html');
+  const result = await renderFit(
+    page,
+    '<a:normAutofit fontScale="85000" lnSpcReduction="10000"/>',
+    paragraphs(12, 1200),
+    175,
+  );
+  expect(result).toMatchObject({ fontSize: '13.6px', transform: '', overflowY: 'visible' });
+});
+
+test('stale stored fontScale that overflows at every font scale keeps the stored render unclipped', async ({
   page,
 }) => {
   await page.goto('/test/browser/blank.html');
@@ -105,8 +120,7 @@ test('stale stored fontScale that overflows at every font scale floors at 25% wi
     '<a:lvl1pPr><a:spcBef><a:spcPts val="2000"/></a:spcBef></a:lvl1pPr>',
     433,
   );
-  expect(result.fontSize).toBe('6.33333px');
-  expect(result.transform).toBe('');
+  expect(result).toMatchObject({ fontSize: '6.33333px', transform: '', overflowY: 'visible' });
 });
 
 test('stale stored fontScale ignores trailing empty paragraphs when fitting visible text', async ({
@@ -176,8 +190,18 @@ const renderBoxes = (page: import('@playwright/test').Page, boxes: Box[]) =>
         range.setEnd(spans[0].firstChild!, offset + 1);
         return range.getBoundingClientRect().left;
       };
+      const containerRect = container.getBoundingClientRect();
+      const lines = spans.flatMap((span) => [...span.getClientRects()]);
       return {
         fontSize: parseFloat(getComputedStyle(spans[0]).fontSize),
+        lineHeight: spans[0].closest('div')!.style.lineHeight,
+        clippedLines:
+          getComputedStyle(container).overflowY === 'visible'
+            ? 0
+            : lines.filter(
+                (line) =>
+                  line.top < containerRect.top - 0.5 || line.bottom > containerRect.bottom + 0.5,
+              ).length,
         transform: container.style.transform,
         firstLineChars: spans[0].getClientRects().length,
         firstLineTop: rects[0].top - box.top,
@@ -285,6 +309,28 @@ test('stale stored fontScale boxes drop overflowing leading empty paragraphs and
     expect(result.firstLineTop).toBeLessThanOrEqual(4.8 + 2);
     expect(result.lastLineBottom).toBeGreaterThanOrEqual(0);
     expect(result.outside).toBeLessThanOrEqual(1);
+  }
+});
+
+test('stale stored fontScale boxes that overflow at every scale keep stored line spacing and clip no line', async ({
+  page,
+}) => {
+  await page.goto('/test/browser/blank.html');
+  const results = await renderBoxes(
+    page,
+    stalePlaceholderBoxes(
+      6400,
+      [heading, 'Issued in total : 103', 'Completed : 47', 'Open : 56', 'Overdue : 3', 'Next'],
+      11,
+      '<a:lvl1pPr><a:lnSpc><a:spcPct val="90000"/></a:lnSpc><a:spcBef><a:spcPts val="1000"/></a:spcBef></a:lvl1pPr>',
+      11,
+    ),
+  );
+  for (const result of results) {
+    expect(result.transform).not.toContain('scale(');
+    expect(result.contentOverflow).toBeGreaterThan(0);
+    expect(result.lineHeight).toBe('0.833');
+    expect(result.clippedLines).toBe(0);
   }
 });
 
