@@ -98,9 +98,9 @@ export function resolveThemeFontStack(
 ): string[] {
   const seen = new Set<string>();
   const stack: string[] = [];
-  for (const typeface of typefaces) {
-    if (!typeface) continue;
-    const resolved = resolveThemeFontName(typeface, ctx, languageHints).trim();
+  for (const typeface of typefaces.flatMap((name) => name?.split(',') ?? [])) {
+    if (!typeface.trim()) continue;
+    const resolved = resolveThemeFontName(typeface.trim(), ctx, languageHints).trim();
     const embedded = ctx.presentation.embeddedFontFamilies?.get(resolved.toLowerCase());
     if (embedded) ctx.usedEmbeddedFontFamilies?.add(embedded);
     for (const font of embedded ? [embedded, resolved] : [resolved]) {
