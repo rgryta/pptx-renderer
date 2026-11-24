@@ -86,6 +86,19 @@ describe('fontResolver', () => {
     ]);
   });
 
+  it('splits a comma-separated typeface into one family per name', () => {
+    const ctx = createMockRenderContext();
+
+    expect(resolveThemeFontStack(['Wingdings,Sans-Serif', 'Arial, Arial'], ctx)).toEqual([
+      'Wingdings',
+      'Sans-Serif',
+      'Arial',
+    ]);
+    expect(cssFontFamilyStack(resolveThemeFontStack(['Wingdings,Sans-Serif'], ctx))).toBe(
+      '"Wingdings", sans-serif',
+    );
+  });
+
   it('keeps the original family as fallback when an embedded face cannot load', () => {
     const ctx = createMockRenderContext();
     ctx.presentation.embeddedFontFamilies = new Map([['example sans', '__pptx_embedded_1_0']]);
